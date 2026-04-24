@@ -73,9 +73,15 @@ class TtechProvider(DataProvider):
         self.grpc_endpoint = self.endpoints.get('grpc', 'invest-public-api.tinkoff.ru:443')
         self.rest_endpoint = self.endpoints.get('rest', 'https://invest-public-api.tinkoff.ru/rest')
         
-        # Получение токена из env
-        token_env = config.get('auth_token_env', 'TTech_API_TOKEN')
+        # Получение токена из env (приоритет: INVEST_TOKEN для t-tech-investments)
+        token_env = config.get('auth_token_env', 'INVEST_TOKEN')
         self.token = os.environ.get(token_env, '')
+        
+        if not self.token:
+            logger.warning(
+                f"Auth token not found in env variable '{token_env}'. "
+                "Set INVEST_TOKEN environment variable for T-Tech Investments API access."
+            )
         
         # Клиенты (ленивая инициализация)
         self._grpc_client = None

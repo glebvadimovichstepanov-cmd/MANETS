@@ -18,6 +18,7 @@ providers:
     name: ttech
     enabled: true
     priority: 1
+    library: t-tech-investments
     rate_limit:
       requests_per_second: 10
       burst_size: 20
@@ -28,7 +29,7 @@ providers:
     endpoints:
       grpc: "invest-public-api.tinkoff.ru:443"
       rest: "https://invest-public-api.tinkoff.ru/rest"
-    auth_token_env: "TTech_API_TOKEN"
+    auth_token_env: "INVEST_TOKEN"
     
   secondary:
     name: moexalgo
