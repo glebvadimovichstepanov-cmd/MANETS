@@ -1,0 +1,212 @@
+# 📊 Конфигурация Data Collector (MANETS)
+# Версия: 2.0 | Дата: 2026-04-25 | Статус: Foundation Spec
+
+# Общие настройки
+general:
+  log_level: INFO
+  log_format: structured_json
+  timezone: Europe/Moscow
+  max_concurrent_fetches: 10
+  request_timeout_sec: 30
+  retry_max_attempts: 3
+  retry_base_delay_sec: 1.0
+  retry_max_delay_sec: 60.0
+
+# Провайдеры данных и приоритеты
+providers:
+  primary:
+    name: ttech
+    enabled: true
+    priority: 1
+    rate_limit:
+      requests_per_second: 10
+      burst_size: 20
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout_sec: 30
+      half_open_requests: 3
+    endpoints:
+      grpc: "invest-public-api.tinkoff.ru:443"
+      rest: "https://invest-public-api.tinkoff.ru/rest"
+    auth_token_env: "TTech_API_TOKEN"
+    
+  secondary:
+    name: moexalgo
+    enabled: true
+    priority: 2
+    rate_limit:
+      requests_per_second: 5
+      burst_size: 10
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout_sec: 30
+      half_open_requests: 3
+    endpoints:
+      base_url: "https://apim.moex.com"
+      
+  tertiary:
+    name: cbr
+    enabled: true
+    priority: 3
+    rate_limit:
+      requests_per_second: 1
+      burst_size: 5
+    circuit_breaker:
+      failure_threshold: 5
+      recovery_timeout_sec: 60
+      half_open_requests: 2
+    endpoints:
+      base_url: "https://cbr-xml-daily.ru"
+      
+  fallback:
+    name: stub
+    enabled: true
+    priority: 4
+    quality_score_override: 0.3
+    warning_on_use: true
+
+# Поддерживаемые таймфреймы
+timeframes:
+  - 1m
+  - 5m
+  - 10m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+  - 1w
+  - 1M
+
+# Ядро инструментов (MVP)
+instruments:
+  tickers:
+    - SNGS
+    - GAZP
+    - SBER
+    - LKOH
+    - YNDX
+  macro:
+    currencies:
+      - USD_RUB
+      - EUR_RUB
+      - CNY_RUB
+    commodities:
+      - BRENT
+      - NATURAL_GAS
+    indices:
+      - MOEX_INDEX
+      - RTS_INDEX
+    rates:
+      - CBR_KEY_RATE
+      - OFZ_26238
+      - OFZ_26244
+      - RUONIA
+
+# Настройки кэширования (Memcached)
+cache:
+  memcached:
+    enabled: true
+    hosts:
+      - host: localhost
+        port: 11211
+    ttl_by_timeframe:
+      1m: 60
+      5m: 300
+      10m: 600
+      15m: 900
+      1h: 3600
+      4h: 14400
+      1d: 86400
+      1w: 604800
+      1M: 2592000
+    key_prefix: "manets:data"
+    fallback_to_local: true
+    
+  local_fallback:
+    enabled: true
+    path: data/cache/hot_data
+    max_size_mb: 500
+    lru_max_entries: 10000
+
+# Хранилище данных
+storage:
+  base_path: data/storage
+  format: json
+  atomic_writes: true
+  compression: false
+  backup_enabled: true
+  backup_path: data/backtest/snapshots
+  
+  metadata:
+    path: data/metadata
+    registry_file: registry.json
+    version_log_file: version_log.json
+
+# Валидация данных
+validation:
+  strict_mode: true
+  checks:
+    schema_enforcement:
+      enabled: true
+      critical: true
+      rules: {}
+    ohlc_consistency:
+      enabled: true
+      critical: true
+      rules:
+        high_gte_low: true
+        open_close_within_range: true
+    causality_guard:
+      enabled: true
+      critical: true
+      min_shift_periods: 1
+    adjusted_prices:
+      enabled: true
+      critical: true
+      monotonic_adj_factor: true
+    gap_detection:
+      enabled: true
+      critical: false
+      max_gap_hours: 24
+    volume_check:
+      enabled: true
+      critical: false
+      max_zero_volume_bars: 5
+    price_jump_check:
+      enabled: true
+      critical: false
+      max_jump_percent: 15
+
+# Инкрементальная синхронизация
+sync:
+  incremental:
+    enabled: true
+    checkpoint_file: checkpoint.json
+    metadata_file: metadata.json
+    deduplication: true
+    idempotent: true
+    
+# Логирование и метрики
+logging:
+  structured: true
+  output: stdout
+  include_fields:
+    - timestamp
+    - level
+    - module
+    - instrument
+    - timeframe
+    - provider
+    - operation
+    - duration_ms
+    - status
+    
+metrics:
+  enabled: true
+  collect:
+    - fetch_duration
+    - cache_hit_rate
+    - validation_errors
+    - sync_deltas
+    - provider_failures
+  export_format: json
