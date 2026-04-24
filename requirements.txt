@@ -1,0 +1,20 @@
+# Core dependencies
+pydantic>=2.0
+pyyaml
+aiohttp
+cachetools
+
+# Memcached support
+pymemcache
+aiomcache
+
+# T-Tech Investments (приоритетный провайдер)
+# Установка: pip install t-tech-investments --index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple
+t-tech-investments
+
+# Testing
+pytest
+pytest-asyncio
+
+# Utilities
+typing-extensions
