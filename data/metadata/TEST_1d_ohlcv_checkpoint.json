@@ -1,0 +1,12 @@
+{
+  "instrument": "TEST",
+  "timeframe": "1d",
+  "data_type": "ohlcv",
+  "last_timestamp": "2024-01-01T00:00:00Z",
+  "last_sync_at": "2026-04-24T18:43:14.328985",
+  "source_chain": [],
+  "checksum": null,
+  "schema_version": "2.0",
+  "quality_score": 1.0,
+  "gaps_detected": 0
+}
