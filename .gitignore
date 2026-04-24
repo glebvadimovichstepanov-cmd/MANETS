@@ -1,3 +1,49 @@
-# No build artifacts, dependencies, or temp files detected
-# Only documentation file (DATA_COLLECTION.md) was added
-# No changes needed to .gitignore
+```
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Data files (if they are temporary/generated)
+*.json
+
+# Testing
+.coverage
+coverage/
+htmlcov/
+.nox/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+```
