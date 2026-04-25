@@ -251,6 +251,11 @@ class MoexAlgoProvider(DataProvider):
             params = {}
         params['json'] = 1
         
+        # Формируем полный URL с параметрами для логирования
+        from urllib.parse import urlencode
+        full_url = f"{url}?{urlencode(params)}"
+        logger.info(f"MOEX API Request: GET {full_url}")
+        
         try:
             async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=self.request_timeout)) as response:
                 content_type = response.headers.get("Content-Type", "")
