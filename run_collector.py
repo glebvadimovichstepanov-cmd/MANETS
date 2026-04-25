@@ -39,6 +39,14 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+# Загрузка переменных окружения из .env файла
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logging.debug("Loaded .env file")
+except ImportError:
+    logging.debug("python-dotenv not installed, skipping .env loading")
+
 if TYPE_CHECKING:
     from src.infrastructure.data.collector import DataCollector
 
