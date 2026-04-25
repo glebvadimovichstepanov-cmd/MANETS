@@ -1,17 +1,17 @@
 {
-  "snapshot_id": "RTS_INDEX_1w_20260425_130329",
+  "snapshot_id": "RTS_INDEX_1w_20260425_132445",
   "instrument": "RTS_INDEX",
   "timeframe": "1w",
   "data_type": "macro",
-  "created_at": "2026-04-25T13:03:29.622345",
-  "updated_at": "2026-04-25T13:03:29.622333",
+  "created_at": "2026-04-25T13:24:45.344154",
+  "updated_at": "2026-04-25T13:24:45.344146",
   "checkpoint": null,
   "validation_report": {
     "passed": true,
     "quality_score": 0.95,
     "errors": [],
     "warnings": [
-      "500 bars with zero volume at end of data"
+      "330 bars with zero volume at end of data"
     ],
     "checks_performed": [
       "schema_enforcement",
@@ -27,5 +27,5 @@
   "source_chain": [
     "ttech"
   ],
-  "total_records": 1000
+  "total_records": 2990
 }

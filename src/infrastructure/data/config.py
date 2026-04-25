@@ -127,6 +127,7 @@ class InstrumentsConfig(BaseModel):
         ticker: str
         figi: Optional[str] = None
         moex_code: Optional[str] = None
+        moex_board: Optional[str] = None
     
     class MacroConfig(BaseModel):
         currencies: List[InstrumentsConfig.MacroInstrument] = Field(default_factory=list)

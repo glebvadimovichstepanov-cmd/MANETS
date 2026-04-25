@@ -143,6 +143,16 @@ class DataCollector:
             try:
                 logger.info(f"Initializing MoexAlgo provider with config: priority={cfg.priority}, base_url={cfg.endpoints.get('base_url', 'N/A')}")
                 
+                # Подготовка конфигурации макро-инструментов для MoexAlgo
+                macro_instruments_config = None
+                if hasattr(self.config, 'instruments') and self.config.instruments:
+                    macro_instruments_config = {
+                        'currencies': [instr.model_dump() for instr in self.config.instruments.macro.currencies],
+                        'commodities': [instr.model_dump() for instr in self.config.instruments.macro.commodities],
+                        'indices': [instr.model_dump() for instr in self.config.instruments.macro.indices],
+                        'rates': [instr.model_dump() for instr in self.config.instruments.macro.rates]
+                    }
+                
                 provider_instance = MoexAlgoProvider(
                     config={
                         'priority': cfg.priority,
@@ -150,7 +160,8 @@ class DataCollector:
                         'request_timeout': cfg.request_timeout_sec
                     },
                     rate_limit_config=cfg.rate_limit.model_dump() if cfg.rate_limit else None,
-                    circuit_breaker_config=cfg.circuit_breaker.model_dump() if cfg.circuit_breaker else None
+                    circuit_breaker_config=cfg.circuit_breaker.model_dump() if cfg.circuit_breaker else None,
+                    macro_instruments_config=macro_instruments_config
                 )
                 providers.append(provider_instance)
                 logger.info("MoexAlgo provider initialized successfully")
