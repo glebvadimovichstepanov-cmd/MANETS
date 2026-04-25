@@ -114,7 +114,7 @@ class IncrementalSynchronizer:
                 instrument, timeframe, data_type
             )
         
-        # Определение периода загрузки
+        # Определение периода загрузки - для макро данных идем от текущей даты назад
         if checkpoint and checkpoint.last_timestamp:
             from_dt = checkpoint.last_timestamp
             # Убедимся, что timestamp timezone-aware (UTC)
@@ -122,12 +122,13 @@ class IncrementalSynchronizer:
                 from_dt = from_dt.replace(tzinfo=timezone.utc)
             # Добавляем небольшой overlap для безопасности (1 бар)
             from_dt = from_dt - self._get_tf_delta(timeframe)
+            to_dt = datetime.now(timezone.utc)
         else:
-            # Полная загрузка: с далёкого прошлого
-            from_dt = datetime(2000, 1, 1, tzinfo=timezone.utc)
-            logger.info(f"No checkpoint found. Full load from {from_dt}")
-        
-        to_dt = datetime.now(timezone.utc)
+            # Для макро данных: начинаем с текущей даты и идем назад до пустоты
+            to_dt = datetime.now(timezone.utc)
+            # Начальная точка - 30 дней назад для первого батча
+            from_dt = to_dt - timedelta(days=30)
+            logger.info(f"No checkpoint found. Starting from {to_dt} going back to {from_dt}")
         
         # Ограничение глубины для внутридневных таймфреймов (5 лет)
         if timeframe in [Timeframe.S5, Timeframe.S10, Timeframe.S30,
@@ -150,35 +151,35 @@ class IncrementalSynchronizer:
                 'duration_ms': 0
             }
         
-        # Загрузка данных (возможно по батчам)
+        # Загрузка данных - для макро идем от новой даты к старой
         all_candles = []
-        current_from = from_dt
+        current_to = to_dt
         
-        while current_from < to_dt:
-            batch_to = min(current_from + timedelta(days=30), to_dt)
+        while current_to > from_dt:
+            batch_from = max(current_to - timedelta(days=30), from_dt)
             
-            logger.debug(f"Fetching batch: {current_from} to {batch_to}")
+            logger.debug(f"Fetching batch: {batch_from} to {current_to}")
             
             try:
                 # Выбор метода в зависимости от типа данных
                 if data_type == "macro":
                     candles = await self.provider.get_macro(
-                        instrument, timeframe, current_from, batch_to
+                        instrument, timeframe, batch_from, current_to
                     )
                 else:
                     candles = await self.provider.get_ohlcv(
-                        instrument, timeframe, current_from, batch_to
+                        instrument, timeframe, batch_from, current_to
                     )
                 
                 if not candles:
-                    logger.warning(f"No data returned for batch {current_from} to {batch_to}")
+                    logger.warning(f"No data returned for batch {batch_from} to {current_to}. Stopping backward search.")
                     break
                 
                 all_candles.extend(candles)
-                current_from = batch_to
+                current_to = batch_from
                 
                 # Небольшая пауза между батчами
-                if current_from < to_dt:
+                if current_to > from_dt:
                     await asyncio.sleep(0.1)
                     
             except Exception as e:
