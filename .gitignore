@@ -1,16 +1,8 @@
 ```
-# Environment variables
-.env
-
-# Python cache
-__pycache__/
+# Compiled Python files
 *.pyc
-*.pyo
-*.pyd
+__pycache__/
 
-# Data storage (assuming generated/intermediate data)
-data/storage/
-
-# Logs
-*.log
+# Metadata and checkpoint files
+data/metadata/*.json
 ```
