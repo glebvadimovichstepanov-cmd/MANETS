@@ -31,10 +31,26 @@ class HistoryDepthConfig(BaseModel):
     )
     
     def get_depth_for_timeframe(self, timeframe: str) -> int:
-        """Получение глубины в годах для конкретного таймфрейма."""
-        return self.by_timeframe.get(timeframe, 
-            self.intraday_years if timeframe in ["1m", "5m", "10m", "15m", "1h", "4h"] 
-            else self.daily_and_above_years)
+        """Получение глубины в годах для конкретного таймфрейма.
+        
+        Поддерживает различные форматы: 'H4', '4h', '1d', 'D1' и т.д.
+        """
+        # Нормализация формата: H4 -> 4h, D1 -> 1d, M15 -> 15m
+        normalized = timeframe.lower()
+        if len(normalized) > 1:
+            if normalized[0].isalpha() and normalized[1:].isdigit():
+                # Формат: H4, D1, M15 -> 4h, 1d, 15m
+                normalized = normalized[1:] + normalized[0]
+        
+        # Проверка в by_timeframe сначала
+        if normalized in self.by_timeframe:
+            return self.by_timeframe[normalized]
+        
+        # Fallback: определение по категории
+        intraday_formats = ["1m", "5m", "10m", "15m", "30m", "1h", "2h", "4h"]
+        if normalized in intraday_formats:
+            return self.intraday_years
+        return self.daily_and_above_years
 
 
 class GeneralConfig(BaseModel):

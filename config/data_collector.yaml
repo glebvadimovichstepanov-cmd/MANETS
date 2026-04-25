@@ -97,6 +97,7 @@ history_depth:
     1d: 10
     1w: 10
     1M: 10
+    MN: 10
 
 # Ядро инструментов (MVP)
 instruments:

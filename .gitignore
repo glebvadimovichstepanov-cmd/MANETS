@@ -5,21 +5,24 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Build and distribution
+# Dependencies
+.venv/
+venv/
+env/
+.env
+.env.local
+.env.*
+
+# Build artifacts
 dist/
 build/
 *.egg-info/
 
-# Virtual environments
-venv/
-.venv/
-env/
-.ENV/
-
 # Logs
 *.log
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Temporary files
+*.tmp
+*.swp
+*~
 ```
