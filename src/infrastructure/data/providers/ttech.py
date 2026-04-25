@@ -211,6 +211,42 @@ class TtechProvider(DataProvider):
             # Ставки
             'RUONIA': ['RUSFAR', 'RUONIA', 'RUONIA_IND'],
         }
+        
+        # Основной маппинг FIGI из конфигурации (приоритет над fallback)
+        self._figi_map = {
+            # Валюты
+            'USD_RUB': 'USD000UTSTOM',
+            'EUR_RUB': 'EUR000UTSTOM',
+            'CNY_RUB': 'CNY000UTSTOM',
+            'GBP_RUB': 'GBP000UTSTOM',
+            'KZT_RUB': 'KZT000UTSTOM',
+            
+            # Товары - фьючерсы
+            'BRENT': 'BBG00X3NNN89',
+            'NATURAL_GAS': 'BBG00BVPV426',
+            'GOLD': 'BBG00QJJPJ35',
+            'SILVER': 'BBG001W7Q2H3',
+            
+            # Индексы
+            'MOEX_INDEX': 'MXBD',
+            'RTS_INDEX': 'RTSD',
+            
+            # OFZ облигации (ISIN коды = FIGI для облигаций)
+            'OFZ_26238': 'SU26238RMFS4',
+            'OFZ_26244': 'SU26244RMFS2'
+        }
+    
+    def get_figi(self, instrument: str) -> Optional[str]:
+        """
+        Получение основного FIGI для инструмента.
+        
+        Args:
+            instrument: Тикер инструмента.
+            
+        Returns:
+            FIGI или None если не найден.
+        """
+        return self._figi_map.get(instrument)
     
     def _quotation_to_decimal(self, quotation: Any) -> Decimal:
         """
@@ -781,7 +817,23 @@ class TtechProvider(DataProvider):
                 
         elif instrument in ['RUONIA', 'MOEX_INDEX', 'RTS_INDEX', 'CBR_KEY_RATE']:
             # Индексы - используем index_by
-            # Сначала пробуем основной FIGI
+            # Сначала пробуем получить FIGI из конфига
+            figi_from_config = self._figi_map.get(instrument)
+            if figi_from_config:
+                logger.info(f"T-Tech Macro: Using FIGI from config for {instrument}: {figi_from_config}")
+                try:
+                    response = await client.instruments.index_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                        id=figi_from_config
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found index {instrument} via index_by (FIGI from config): instrument_id={inst.uid}, figi={inst.figi}")
+                        return inst.uid or inst.figi
+                except Exception as e:
+                    logger.debug(f"T-Tech Macro: index_by (FIGI from config) failed for {instrument}: {e}")
+            
+            # Затем пробуем основной FIGI из старого маппинга
             try:
                 mapped_figi = self._macro_ticker_map.get(instrument, instrument)
                 response = await client.instruments.index_by(
@@ -820,6 +872,22 @@ class TtechProvider(DataProvider):
         elif instrument in ['USD_RUB', 'EUR_RUB', 'CNY_RUB']:
             # Валютные пары - используем currency_by
             # На Московской бирже валютные пары торгуются в классе VALNET (tom-расчеты)
+            
+            # Сначала пробуем получить FIGI из конфига (через _figi_map)
+            figi_from_config = self._figi_map.get(instrument)
+            if figi_from_config:
+                logger.info(f"T-Tech Macro: Using FIGI from config for {instrument}: {figi_from_config}")
+                try:
+                    response = await client.instruments.currency_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                        id=figi_from_config
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found {instrument} via currency_by (FIGI from config): instrument_id={inst.uid}, figi={inst.figi}")
+                        return inst.uid or inst.figi
+                except Exception as e:
+                    logger.debug(f"T-Tech Macro: currency_by (FIGI from config) failed for {instrument}: {e}")
             
             # Для CNY_RUB сначала пробуем поиск по тикеру, так как FIGI может не работать
             if instrument == 'CNY_RUB':

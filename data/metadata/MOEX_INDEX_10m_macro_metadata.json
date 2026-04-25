@@ -1,0 +1,33 @@
+{
+  "snapshot_id": "MOEX_INDEX_10m_20260425_130321",
+  "instrument": "MOEX_INDEX",
+  "timeframe": "10m",
+  "data_type": "macro",
+  "created_at": "2026-04-25T13:03:21.626383",
+  "updated_at": "2026-04-25T13:03:21.626375",
+  "checkpoint": null,
+  "validation_report": {
+    "passed": true,
+    "quality_score": 0.85,
+    "errors": [],
+    "warnings": [
+      "Gap detected at 2026-04-13 09:50:00: 63.00h since previous bar",
+      "Gap detected at 2026-04-20 09:50:00: 63.00h since previous bar",
+      "500 bars with zero volume at end of data"
+    ],
+    "checks_performed": [
+      "schema_enforcement",
+      "ohlc_consistency",
+      "timestamp_monotonicity",
+      "gap_detection",
+      "volume_check",
+      "price_jump_check",
+      "adjusted_prices"
+    ],
+    "gaps": 0
+  },
+  "source_chain": [
+    "ttech"
+  ],
+  "total_records": 1000
+}

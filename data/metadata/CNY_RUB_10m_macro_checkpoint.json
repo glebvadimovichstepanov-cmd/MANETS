@@ -1,0 +1,14 @@
+{
+  "instrument": "CNY_RUB",
+  "timeframe": "10m",
+  "data_type": "macro",
+  "last_timestamp": "2026-04-21T10:30:00",
+  "last_sync_at": "2026-04-25T13:03:12.628637",
+  "source_chain": [
+    "moexalgo"
+  ],
+  "checksum": null,
+  "schema_version": "2.0",
+  "quality_score": 0.9,
+  "gaps_detected": 0
+}
