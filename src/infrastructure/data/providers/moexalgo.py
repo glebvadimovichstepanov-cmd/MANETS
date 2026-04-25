@@ -600,6 +600,7 @@ class MoexAlgoProvider(DataProvider):
             is_currency = instrument in ['USD_RUB', 'EUR_RUB', 'CNY_RUB', 'GBP_RUB', 'KZT_RUB']
             is_index = instrument in ['MOEX_INDEX', 'RTS_INDEX', 'MOEX_OG', 'MOEX_BC']
             is_bond = instrument.startswith('OFZ_')  # Облигации
+            is_futures = instrument in ['BRENT', 'NATURAL_GAS', 'GOLD', 'SILVER']  # Фьючерсы на товары
             
             # Построение URL для ISS API
             if is_macro:
@@ -627,20 +628,22 @@ class MoexAlgoProvider(DataProvider):
                         board = 'INDEX'
                     url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
                 elif is_bond:
-                    # Облигации: используем TQCB (корпоративные) или TQOB (государственные)
+                    # Облигации: используем TQOB (государственные) или TQCB (корпоративные)
                     engine = 'stock'
                     market = 'bonds'
                     if not board:
-                        board = 'TQCB'  # По умолчанию корпоративные, но OFZ лучше на TQCB
+                        board = 'TQOB'  # По умолчанию государственные облигации (OFZ)
                     url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
-                else:
+                elif is_futures:
                     # Товары - фьючерсы (BRENT, NATURAL_GAS, GOLD, SILVER)
                     # Фьючерсы торгуются на FORTS (Forts Derivatives Market)
                     # Используем URL без board для фьючерсов - MOEX ISS API требует такой формат
                     engine = 'futures'
                     market = 'forts'
                     url = f"{self.base_url}/engines/{engine}/markets/{market}/securities/{ticker}/candles"
-                url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
+                else:
+                    # Другие макро-инструменты
+                    url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
             else:
                 # Акции
                 url = f"{self.base_url}/engines/stock/markets/shares/securities/{instrument}/candles"
