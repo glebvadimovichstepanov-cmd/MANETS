@@ -324,6 +324,7 @@ class DataCollector:
         self,
         instruments: List[str],
         timeframe: Timeframe,
+        data_type: str = "ohlcv",
         force_full: bool = False
     ) -> Dict[str, Dict[str, Any]]:
         """
@@ -332,6 +333,7 @@ class DataCollector:
         Args:
             instruments: Список тикеров.
             timeframe: Таймфрейм.
+            data_type: Тип данных.
             force_full: Принудительная полная загрузка.
             
         Returns:
@@ -341,9 +343,10 @@ class DataCollector:
         
         for instrument in instruments:
             try:
-                sync = self._get_synchronizer(instrument, timeframe)
+                sync = self._get_synchronizer(instrument, timeframe, data_type)
                 result = await sync.sync(
                     instrument, timeframe,
+                    data_type=data_type,
                     force_full=force_full
                 )
                 results[instrument] = result
@@ -365,13 +368,14 @@ class DataCollector:
     def _get_synchronizer(
         self,
         instrument: str,
-        timeframe: Timeframe
+        timeframe: Timeframe,
+        data_type: str = "ohlcv"
     ) -> IncrementalSynchronizer:
         """Получение или создание синхронизатора."""
-        key = f"{instrument}:{timeframe.value}"
+        key = f"{instrument}:{timeframe.value}:{data_type}"
         
         if key not in self._syncs:
-            provider = self._router.get_provider('ohlcv', instrument)
+            provider = self._router.get_provider(data_type, instrument)
             self._syncs[key] = IncrementalSynchronizer(
                 provider=provider,
                 storage=self._storage,
@@ -481,10 +485,14 @@ class DataCollector:
     
     @property
     def primary_provider(self) -> Optional[DataProvider]:
-        """Получение основного провайдера (первый доступный)."""
+        """Получение основного провайдера (первый доступный для ohlcv)."""
         if not self._providers:
             return None
         return self._router.get_provider('ohlcv', 'ANY')
+    
+    def get_provider_for(self, data_type: str, instrument: str) -> Optional[DataProvider]:
+        """Получение провайдера для конкретного типа данных и инструмента."""
+        return self._router.get_provider(data_type, instrument)
     
     @property
     def storage(self) -> LocalFileStorage:
