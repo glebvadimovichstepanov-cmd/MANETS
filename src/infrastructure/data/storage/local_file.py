@@ -266,16 +266,18 @@ class LocalFileStorage:
         ticker: str,
         timeframe: Union[Timeframe, str],
         candles: List[Dict[str, Any]],
-        append: bool = True
+        append: bool = True,
+        data_type: str = "ohlcv"
     ) -> bool:
         """
-        Запись OHLCV данных.
+        Запись OHLCV или макро данных.
         
         Args:
-            ticker: Тикер.
+            ticker: Тикер/инструмент.
             timeframe: Таймфрейм.
             candles: Список свечей (как dict).
             append: Добавить к существующим (True) или заменить (False).
+            data_type: Тип данных ("ohlcv" или "macro").
             
         Returns:
             True если успешно.
@@ -284,9 +286,9 @@ class LocalFileStorage:
         if isinstance(timeframe, str):
             timeframe = Timeframe(timeframe)
         
-        lock_key = f"ohlcv:{ticker}:{timeframe.value}"
+        lock_key = f"{data_type}:{ticker}:{timeframe.value}"
         async with self._get_lock(lock_key):
-            path = self._get_ticker_path(ticker, timeframe, "ohlcv")
+            path = self._get_ticker_path(ticker, timeframe, data_type)
             
             existing = []
             if append:
@@ -300,7 +302,7 @@ class LocalFileStorage:
             
             await self._atomic_write(path, combined)
             
-            logger.debug(f"Written {len(candles)} candles to {path} (total: {len(combined)})")
+            logger.debug(f"Written {len(candles)} {data_type} to {path} (total: {len(combined)})")
             return True
     
     def _deduplicate_candles(self, candles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

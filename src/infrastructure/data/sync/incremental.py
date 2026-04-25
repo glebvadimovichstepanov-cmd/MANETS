@@ -147,9 +147,15 @@ class IncrementalSynchronizer:
             logger.debug(f"Fetching batch: {current_from} to {batch_to}")
             
             try:
-                candles = await self.provider.get_ohlcv(
-                    instrument, timeframe, current_from, batch_to
-                )
+                # Выбор метода в зависимости от типа данных
+                if data_type == "macro":
+                    candles = await self.provider.get_macro(
+                        instrument, timeframe, current_from, batch_to
+                    )
+                else:
+                    candles = await self.provider.get_ohlcv(
+                        instrument, timeframe, current_from, batch_to
+                    )
                 
                 if not candles:
                     logger.warning(f"No data returned for batch {current_from} to {batch_to}")
@@ -193,7 +199,7 @@ class IncrementalSynchronizer:
         
         # Запись в хранилище
         await self.storage.write_ohlcv(
-            instrument, timeframe, candles_dict, append=True
+            instrument, timeframe, candles_dict, append=True, data_type=data_type
         )
         
         # Обновление контрольной точки
