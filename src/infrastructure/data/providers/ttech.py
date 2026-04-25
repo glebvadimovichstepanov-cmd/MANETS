@@ -34,6 +34,20 @@ from .base import DataProvider, ProviderState
 
 logger = logging.getLogger(__name__)
 
+# Проверка доступности библиотеки tinkoff.invest при загрузке модуля
+try:
+    from tinkoff.invest import AioClient, CandleInterval, GetCandlesRequest
+    from tinkoff.invest.services import InstrumentsService, MarketDataService
+    TTECH_LIBRARY_AVAILABLE = True
+    logger.debug("tinkoff.invest library loaded successfully")
+except ImportError as e:
+    TTECH_LIBRARY_AVAILABLE = False
+    logger.warning(
+        f"tinkoff.invest library not available: {e}. "
+        "TtechProvider will return empty data. "
+        "Install with: pip install tinkoff-investments (on Windows with your token)"
+    )
+
 
 class TtechProvider(DataProvider):
     """
@@ -231,22 +245,100 @@ class TtechProvider(DataProvider):
             Список свечей.
         """
         async def _fetch():
-            # Реальная реализация будет использовать gRPC GetCandles
-            # Для MVP возвращаем пустой список
             logger.debug(
                 f"T-Tech: Fetching OHLCV for {instrument} {timeframe.value} "
                 f"from {from_dt} to {to_dt}"
             )
             
-            # Здесь будет вызов API
-            # candles_response = await client.get_candles(...)
+            # Проверка доступности библиотеки
+            if not TTECH_LIBRARY_AVAILABLE:
+                logger.error(
+                    "tinkoff.invest library is not installed. "
+                    "Cannot fetch real data from T-Tech API. "
+                    "Returning empty list."
+                )
+                return []
             
-            return []
+            try:
+                # Маппинг таймфреймов
+                timeframe_map = {
+                    '1m': CandleInterval.CANDLE_INTERVAL_1_MIN,
+                    '5m': CandleInterval.CANDLE_INTERVAL_5_MIN,
+                    '10m': CandleInterval.CANDLE_INTERVAL_10_MIN,
+                    '15m': CandleInterval.CANDLE_INTERVAL_15_MIN,
+                    '30m': CandleInterval.CANDLE_INTERVAL_30_MIN,
+                    '1h': CandleInterval.CANDLE_INTERVAL_HOUR,
+                    '4h': CandleInterval.CANDLE_INTERVAL_4_HOUR,
+                    '1d': CandleInterval.CANDLE_INTERVAL_DAY,
+                    '1w': CandleInterval.CANDLE_INTERVAL_WEEK,
+                    '1M': CandleInterval.CANDLE_INTERVAL_MONTH,
+                }
+                
+                interval = timeframe_map.get(timeframe.value)
+                if interval is None:
+                    logger.warning(f"Unsupported timeframe: {timeframe.value}")
+                    return []
+                
+                # Получаем FIGI для тикера
+                async with AioClient(token=self.token) as client:
+                    instruments: InstrumentsService = client.instruments
+                    
+                    # Поиск инструмента по тикуру
+                    figi = None
+                    try:
+                        # Пробуем найти по тикуру через share_by (новый API)
+                        response = await client.instruments.share_by(ticker=instrument)
+                        figi = response.instrument.figi
+                        logger.debug(f"T-Tech: Found FIGI {figi} for ticker {instrument}")
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not find share by ticker '{instrument}': {e}. "
+                            f"Trying to use as FIGI directly."
+                        )
+                        # Если не нашли, возможно это уже FIGI
+                        figi = instrument
+                    
+                    if not figi:
+                        logger.error(f"Could not find FIGI for ticker: {instrument}")
+                        return []
+                    
+                    logger.debug(f"T-Tech: Using FIGI {figi} for {instrument}")
+                    
+                    # Запрос свечей
+                    candles_response = await client.market_data.get_candles(
+                        figi=figi,
+                        interval=interval,
+                        from_=from_dt,
+                        to=to_dt
+                    )
+                    
+                    # Конвертация в наши модели
+                    candles = []
+                    for candle in candles_response.candles:
+                        candles.append(Candle(
+                            timestamp=self._timestamp_to_datetime(candle.time),
+                            open=self._quotation_to_decimal(candle.open),
+                            high=self._quotation_to_decimal(candle.high),
+                            low=self._quotation_to_decimal(candle.low),
+                            close=self._quotation_to_decimal(candle.close),
+                            volume=Decimal(str(candle.volume)),
+                            adj_close=None,  # T-Tech не предоставляет adjusted close
+                            timeframe=timeframe,
+                            source=DataSource.TTECH
+                        ))
+                    
+                    logger.info(f"T-Tech: Retrieved {len(candles)} candles for {instrument}")
+                    return candles
+                    
+            except ImportError as e:
+                logger.error(f"t-tech-investments library not installed: {e}")
+                return []
+            except Exception as e:
+                logger.error(f"T-Tech API error for {instrument}: {e}")
+                raise
         
         try:
-            return await self._execute_with_protection(
-                self._retry_with_backoff(_fetch(), f"get_ohlcv:{instrument}")
-            )
+            return await self._execute_with_protection(_fetch())
         except Exception as e:
             logger.error(f"T-Tech get_ohlcv failed for {instrument}: {e}")
             raise
