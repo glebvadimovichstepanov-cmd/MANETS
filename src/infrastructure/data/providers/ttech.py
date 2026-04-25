@@ -159,7 +159,7 @@ class TtechProvider(DataProvider):
         self._supported_macro = {
             # Валюты
             'USD_RUB', 'EUR_RUB', 'CNY_RUB',
-            # Товары
+            # Товары (фьючерсы/ETF)
             'BRENT', 'NATURAL_GAS',
             # Индексы
             'MOEX_INDEX', 'RTS_INDEX',
@@ -168,18 +168,26 @@ class TtechProvider(DataProvider):
         }
         
         # Маппинг тикеров для API запросов (ticker -> instrument_id для T-Tech)
+        # Актуальные идентификаторы по состоянию на 2026
         self._macro_ticker_map = {
-            'USD_RUB': 'USD000UTSTOM',  # USD/RUB tom
-            'EUR_RUB': 'EUR000UTSTOM',  # EUR/RUB tom
-            'CNY_RUB': 'CNY000UTSTOM',  # CNY/RUB tom
-            'BRENT': 'BRNF',  # Brent crude futures
-            'NATURAL_GAS': 'NG',  # Natural Gas futures
-            'MOEX_INDEX': 'IMOEX',  # MOEX Russia Index
-            'RTS_INDEX': 'IRTS',  # RTS Index
-            'CBR_KEY_RATE': 'CBR_KEY_RATE',  # Key rate (special)
-            'OFZ_26238': 'SU26238RMFS4',  # OFZ bond
-            'OFZ_26244': 'SU26244RMFS2',  # OFZ bond
-            'RUONIA': 'RUONIA',  # RUONIA index
+            # Валютные пары (FIGI для tom-расчетов)
+            'USD_RUB': 'USD000UTSTOM',   # USD/RUB tom
+            'EUR_RUB': 'EUR000UTSTOM',   # EUR/RUB tom
+            'CNY_RUB': 'CNY000UTSTOM',   # CNY/RUB tom
+            
+            # Товары (фьючерсы и ETF)
+            'BRENT': 'BRNF',             # Brent crude futures ticker
+            'NATURAL_GAS': 'NGAS',       # Natural Gas futures ticker
+            
+            # Индексы (FIGI)
+            'MOEX_INDEX': 'IMOEX',       # MOEX Russia Index full return gross
+            'RTS_INDEX': 'IRTS',         # RTS Index futures
+            
+            # Ставки и облигации
+            'CBR_KEY_RATE': 'CBR_KEY_RATE',  # Ключевая ставка (специальный, берется из CBR)
+            'OFZ_26238': 'SU26238RMFS4',     # OFZ bond ISIN
+            'OFZ_26244': 'SU26244RMFS2',     # OFZ bond ISIN
+            'RUONIA': 'RUSFAR',              # RUSFAR (аналог RUONIA, есть в Tinkoff)
         }
     
     def _quotation_to_decimal(self, quotation: Any) -> Decimal:

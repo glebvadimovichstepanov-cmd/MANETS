@@ -1,31 +1,20 @@
-```yaml
-# Configuration file for data collection
-data_source:
-  type: "api"
-  endpoint: "https://api.example.com/data"
-  timeout: 30
-  retry_attempts: 3
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-collection_settings:
-  interval_minutes: 60
-  batch_size: 100
-  max_concurrent_workers: 5
+# Logs and temp files
+*.log
+*.tmp
 
-output_format:
-  format: "json"
-  compression: true
-  timestamp_field: "collected_at"
+# Environment
+.env
+.env.local
+*.env.*
 
-filters:
-  include_fields: ["id", "name", "value", "timestamp"]
-  exclude_patterns: ["temp_*", "*_backup"]
-
-error_handling:
-  log_errors: true
-  error_threshold: 10
-  pause_on_error: false
-
-metrics:
-  enable_monitoring: true
-  metrics_endpoint: "http://localhost:9090/metrics"
+# Dependencies
+.venv/
+venv/
 ```
