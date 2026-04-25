@@ -87,7 +87,7 @@ instruments:
     - GAZP
     - SBER
     - LKOH
-    - YNDX
+    - YDEX
   macro:
     currencies:
       - USD_RUB
