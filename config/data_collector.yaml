@@ -80,6 +80,26 @@ timeframes:
   - 1w
   - 1M
 
+# Глубина сбора данных по таймфреймам
+data_depth:
+  # Для внутридневных таймфреймов (< 1d)
+  intraday:
+    years: 3
+    timeframes:
+      - 1m
+      - 5m
+      - 10m
+      - 15m
+      - 1h
+      - 4h
+  # Для дневных и выше (>= 1d)
+  daily_and_above:
+    years: 10
+    timeframes:
+      - 1d
+      - 1w
+      - 1M
+
 # Ядро инструментов (MVP)
 instruments:
   tickers:
