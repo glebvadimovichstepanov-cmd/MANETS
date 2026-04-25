@@ -175,19 +175,42 @@ class TtechProvider(DataProvider):
             'EUR_RUB': 'EUR000UTSTOM',   # EUR/RUB tom
             'CNY_RUB': 'CNY000UTSTOM',   # CNY/RUB tom
             
-            # Товары (фьючерсы и ETF)
-            'BRENT': 'BRNF',             # Brent crude futures ticker
-            'NATURAL_GAS': 'NGAS',       # Natural Gas futures ticker
+            # Товары (фьючерсы - ближайшие контракты)
+            # Примечание: фьючерсы имеют ограниченный срок жизни, нужно обновлять
+            'BRENT': 'BRNF',             # Brent crude futures (если доступен)
+            'NATURAL_GAS': 'NGAS',       # Natural Gas futures (если доступен)
             
-            # Индексы (FIGI)
-            'MOEX_INDEX': 'IMOEX',       # MOEX Russia Index full return gross
-            'RTS_INDEX': 'IRTS',         # RTS Index futures
+            # Индексы (FIGI) - могут быть недоступны для GetCandles
+            'MOEX_INDEX': 'IMOEX',       # MOEX Russia Index
+            'RTS_INDEX': 'IRTS',         # RTS Index
             
             # Ставки и облигации
             'CBR_KEY_RATE': 'CBR_KEY_RATE',  # Ключевая ставка (специальный, берется из CBR)
             'OFZ_26238': 'SU26238RMFS4',     # OFZ bond ISIN
             'OFZ_26244': 'SU26244RMFS2',     # OFZ bond ISIN
             'RUONIA': 'RUSFAR',              # RUSFAR (аналог RUONIA, есть в Tinkoff)
+        }
+        
+        # Инструменты, которые требуют специального处理方式 (не доступны через стандартный GetCandles)
+        self._special_macro_instruments = {
+            'CBR_KEY_RATE',  # Требуется внешний источник (ЦБ РФ)
+        }
+        
+        # Альтернативные FIGI для инструментов, если основные не работают
+        self._fallback_figi_map = {
+            # Валюты - альтернативные инструменты (бессрочные контракты)
+            'CNY_RUB': ['CNY000UTSTOM', 'CNYRUB_TOM'],
+            
+            # Товары - ETF на нефть и газ вместо фьючерсов
+            'BRENT': ['SBGB', 'OIL'],  # ETF на нефть
+            'NATURAL_GAS': ['NGAS', 'GASE'],  # ETF на газ
+            
+            # Индексы - полные названия
+            'MOEX_INDEX': ['IMOEX', 'MXRA'],
+            'RTS_INDEX': ['IRTS', 'RTSI'],
+            
+            # Ставки
+            'RUONIA': ['RUSFAR', 'RUONIA'],
         }
     
     def _quotation_to_decimal(self, quotation: Any) -> Decimal:
@@ -759,8 +782,8 @@ class TtechProvider(DataProvider):
                 
         elif instrument in ['RUONIA', 'MOEX_INDEX', 'RTS_INDEX', 'CBR_KEY_RATE']:
             # Индексы - используем index_by
+            # Сначала пробуем основной FIGI
             try:
-                # Для индексов используем специальный класс_code или поиск по FIGI
                 mapped_figi = self._macro_ticker_map.get(instrument, instrument)
                 response = await client.instruments.index_by(
                     id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
@@ -772,16 +795,33 @@ class TtechProvider(DataProvider):
                     return inst.uid or inst.figi
             except Exception as e:
                 logger.debug(f"T-Tech Macro: index_by failed for {instrument}: {e}")
-                
+            
+            # Пробуем альтернативные FIGI из fallback списка
+            fallback_list = self._fallback_figi_map.get(instrument, [])
+            for alt_figi in fallback_list:
+                try:
+                    logger.info(f"T-Tech Macro: Trying alternative FIGI {alt_figi} for {instrument}")
+                    response = await client.instruments.index_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                        id=alt_figi
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found index {instrument} via alternative FIGI {alt_figi}: instrument_id={inst.uid}")
+                        return inst.uid or inst.figi
+                except Exception as e:
+                    logger.debug(f"T-Tech Macro: index_by failed for {alt_figi}: {e}")
+            
             # Fallback: используем mapped FIGI
             mapped_figi = self._macro_ticker_map.get(instrument, instrument)
             if mapped_figi != instrument:
-                logger.info(f"T-Tech Macro: Using mapped FIGI {mapped_figi} for index {instrument}")
+                logger.info(f"T-Tech Macro: Using mapped FIGI {mapped_figi} for index {instrument} (fallback)")
                 return mapped_figi
                 
         elif instrument in ['USD_RUB', 'EUR_RUB', 'CNY_RUB']:
             # Валютные пары - используем currency_by
             # На Московской бирже валютные пары торгуются в классе VALNET (tom-расчеты)
+            # Сначала пробуем основной FIGI
             try:
                 mapped_figi = self._macro_ticker_map.get(instrument)
                 if mapped_figi:
@@ -796,6 +836,22 @@ class TtechProvider(DataProvider):
                         return inst.uid or inst.figi
             except Exception as e:
                 logger.debug(f"T-Tech Macro: currency_by (FIGI) failed for {instrument}: {e}")
+            
+            # Пробуем альтернативные FIGI из fallback списка
+            fallback_list = self._fallback_figi_map.get(instrument, [])
+            for alt_figi in fallback_list:
+                try:
+                    logger.info(f"T-Tech Macro: Trying alternative FIGI {alt_figi} for {instrument}")
+                    response = await client.instruments.currency_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                        id=alt_figi
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found currency {instrument} via alternative FIGI {alt_figi}: instrument_id={inst.uid}")
+                        return inst.uid or inst.figi
+                except Exception as e:
+                    logger.debug(f"T-Tech Macro: currency_by failed for {alt_figi}: {e}")
             
             # Fallback: пробуем найти по тикеру в классе VALNET
             try:
@@ -822,10 +878,10 @@ class TtechProvider(DataProvider):
                 
         elif instrument in ['BRENT', 'NATURAL_GAS']:
             # Товары - могут быть как futures, ищем через share_by или bond_by
+            # Сначала пробуем основной FIGI
             try:
                 mapped_figi = self._macro_ticker_map.get(instrument)
                 if mapped_figi:
-                    # Пробуем как акцию/future
                     response = await client.instruments.share_by(
                         id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
                         id=mapped_figi
@@ -836,10 +892,27 @@ class TtechProvider(DataProvider):
                         return inst.uid or inst.figi
             except Exception as e:
                 logger.debug(f"T-Tech Macro: share_by failed for {instrument}: {e}")
-                
-            # Fallback
+            
+            # Пробуем альтернативные FIGI из fallback списка
+            fallback_list = self._fallback_figi_map.get(instrument, [])
+            for alt_figi in fallback_list:
+                try:
+                    logger.info(f"T-Tech Macro: Trying alternative FIGI {alt_figi} for {instrument}")
+                    response = await client.instruments.share_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                        id=alt_figi
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found commodity {instrument} via alternative FIGI {alt_figi}: instrument_id={inst.uid}")
+                        return inst.uid or inst.figi
+                except Exception as e:
+                    logger.debug(f"T-Tech Macro: share_by failed for {alt_figi}: {e}")
+            
+            # Fallback на основной маппинг
             mapped_figi = self._macro_ticker_map.get(instrument, instrument)
             if mapped_figi != instrument:
+                logger.info(f"T-Tech Macro: Using mapped FIGI {mapped_figi} for {instrument} (fallback)")
                 return mapped_figi
         
         # Последний fallback: возвращаем то, что есть в маппинге
