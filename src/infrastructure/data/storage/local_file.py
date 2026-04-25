@@ -27,7 +27,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from ..models import Timeframe, Checkpoint, Metadata, ValidationReport, DataSource, L2OrderBook, L2OrderLevel
+from ..models import Timeframe, Checkpoint, Metadata, ValidationReport, DataSource, L2OrderBook, L2OrderLevel, MacroCandle
 
 logger = logging.getLogger(__name__)
 
@@ -676,4 +676,104 @@ class LocalFileStorage:
             except Exception as e:
                 logger.error(f"Failed to parse orderbook snapshot: {e}")
         
+        return result
+
+    async def write_macro(
+        self,
+        instrument: str,
+        timeframe: str,
+        candles: List[Union[Dict[str, Any], MacroCandle]],
+        append: bool = True
+    ) -> bool:
+        """
+        Запись макро-данных (валюты, товары, индексы, ставки).
+
+        Args:
+            instrument: Макро-инструмент (USD_RUB, BRENT, MOEX_INDEX, etc).
+            timeframe: Таймфрейм (1d, 1w, 1M).
+            candles: Список макро-свечей (dict или MacroCandle).
+            append: Добавлять к существующим данным (True) или перезаписать (False).
+
+        Returns:
+            True если успешно.
+        """
+        # Конвертация в dict если нужно
+        candles_dict = []
+        for c in candles:
+            if isinstance(c, MacroCandle):
+                candles_dict.append(c.model_dump(mode='json'))
+            else:
+                candles_dict.append(c)
+
+        # Путь: data/storage/macro/{INSTRUMENT}/{timeframe}/candles.json
+        path = self.base_path / "macro" / instrument / timeframe / "candles.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        async with self._get_lock(f"macro:{instrument}:{timeframe}"):
+            existing = []
+            if append and path.exists():
+                try:
+                    data = await self.read_json(path)
+                    if data and isinstance(data, list):
+                        existing = data
+                except Exception as e:
+                    logger.warning(f"Could not read existing macro data for {instrument}: {e}")
+
+            # Дедупликация по timestamp
+            existing_ts = {item.get('timestamp') for item in existing}
+            new_candles = [c for c in candles_dict if c.get('timestamp') not in existing_ts]
+            combined = existing + new_candles
+
+            # Сортировка по timestamp
+            combined.sort(key=lambda x: x.get('timestamp', ''))
+
+            await self._atomic_write(path, combined)
+
+            logger.info(f"Written {len(new_candles)} macro candles for {instrument} {timeframe} (total: {len(combined)})")
+            return True
+
+    async def read_macro(
+        self,
+        instrument: str,
+        timeframe: str,
+        from_dt: Optional[datetime] = None,
+        to_dt: Optional[datetime] = None
+    ) -> List[MacroCandle]:
+        """
+        Чтение макро-данных.
+
+        Args:
+            instrument: Макро-инструмент.
+            timeframe: Таймфрейм.
+            from_dt: Начало периода (опционально).
+            to_dt: Конец периода (опционально).
+
+        Returns:
+            Список MacroCandle.
+        """
+        path = self.base_path / "macro" / instrument / timeframe / "candles.json"
+        data = await self.read_json(path)
+
+        if not data or not isinstance(data, list):
+            return []
+
+        result = []
+        for item in data:
+            # Фильтрация по периоду
+            if from_dt or to_dt:
+                ts_str = item.get('timestamp', '')
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                    if from_dt and ts < from_dt:
+                        continue
+                    if to_dt and ts > to_dt:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
+            try:
+                result.append(MacroCandle(**item))
+            except Exception as e:
+                logger.error(f"Failed to parse macro candle: {e}")
+
         return result
