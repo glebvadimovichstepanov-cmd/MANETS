@@ -1,10 +1,10 @@
 {
-  "snapshot_id": "MOEX_INDEX_1d_20260425_140104",
+  "snapshot_id": "MOEX_INDEX_1d_20260425_145704",
   "instrument": "MOEX_INDEX",
   "timeframe": "1d",
   "data_type": "macro",
-  "created_at": "2026-04-25T14:01:04.620011",
-  "updated_at": "2026-04-25T14:01:04.619996",
+  "created_at": "2026-04-25T14:57:04.438494",
+  "updated_at": "2026-04-25T14:57:04.438482",
   "checkpoint": null,
   "validation_report": {
     "passed": true,
@@ -27,5 +27,5 @@
   "source_chain": [
     "ttech"
   ],
-  "total_records": 2155
+  "total_records": 2595
 }

@@ -1,9 +1,9 @@
 {
   "instrument": "RTS_INDEX",
-  "timeframe": "1M",
+  "timeframe": "1m",
   "data_type": "macro",
-  "last_timestamp": "2026-04-08T10:30:00",
-  "last_sync_at": "2026-04-25T13:02:50.404282",
+  "last_timestamp": "2026-03-26T18:09:00",
+  "last_sync_at": "2026-04-25T14:57:09.499590",
   "source_chain": [
     "moexalgo"
   ],
