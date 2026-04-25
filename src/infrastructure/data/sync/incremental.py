@@ -174,10 +174,21 @@ class IncrementalSynchronizer:
         all_candles = []
         current_to = to_dt
         
+        # Определяем размер батча в зависимости от таймфрейма
+        # Для внутридневных TF уменьшаем батч до 7 дней для надежности
+        if timeframe in [Timeframe.S5, Timeframe.S10, Timeframe.S30,
+                         Timeframe.M1, Timeframe.M2, Timeframe.M3, Timeframe.M5,
+                         Timeframe.M10, Timeframe.M15, Timeframe.M30,
+                         Timeframe.H1, Timeframe.H2, Timeframe.H4]:
+            batch_days = 7
+            logger.info(f"Intraday TF detected. Using batch size of {batch_days} days")
+        else:
+            batch_days = 30
+        
         while current_to > from_dt:
-            batch_from = max(current_to - timedelta(days=30), from_dt)
+            batch_from = max(current_to - timedelta(days=batch_days), from_dt)
             
-            logger.debug(f"Fetching batch: {batch_from} to {current_to}")
+            logger.info(f"Fetching batch: {batch_from} to {current_to} ({batch_days} days)")
             
             try:
                 # Выбор метода в зависимости от типа данных
@@ -194,12 +205,13 @@ class IncrementalSynchronizer:
                     logger.warning(f"No data returned for batch {batch_from} to {current_to}. Stopping backward search.")
                     break
                 
+                logger.info(f"Retrieved {len(candles)} candles for batch")
                 all_candles.extend(candles)
                 current_to = batch_from
                 
                 # Небольшая пауза между батчами
                 if current_to > from_dt:
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.2)
                     
             except Exception as e:
                 logger.error(f"Failed to fetch batch: {e}")
