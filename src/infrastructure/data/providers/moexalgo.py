@@ -341,7 +341,8 @@ class MoexAlgoProvider(DataProvider):
         month_letter = self._futures_month_codes.get(contract_month, 'H')
         
         # Две последние цифры года
-        year_suffix = str(contract_year)[-2:]
+        # Для контрактов MOEX используется одна цифра года для ближайших лет (5 для 2025, 6 для 2026)
+        year_suffix = str(contract_year)[-1:]
         
         contract_code = f"{base_code}{month_letter}{year_suffix}"
         logger.info(f"Auto-selected futures contract {contract_code} for {base_code} as of {from_dt.date()} (delivery_month={contract_month}, year={contract_year})")
