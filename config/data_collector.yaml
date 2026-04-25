@@ -6,22 +6,24 @@ general:
   log_level: INFO
   log_format: structured_json
   timezone: Europe/Moscow
-  max_concurrent_fetches: 10
+  max_concurrent_fetches: 5
   request_timeout_sec: 30
   retry_max_attempts: 3
   retry_base_delay_sec: 1.0
   retry_max_delay_sec: 60.0
 
-# Провайдеры данных и приоритеты
+# Провайдеры данных и приориты
 providers:
   primary:
     name: ttech
     enabled: true
     priority: 1
     library: t-tech-investments
+    # Tinkoff Invest API лимит: 200 запросов в минуту (3.33 req/s)
+    # Используем консервативный лимит 2.5 req/s с burst=5 для надежности
     rate_limit:
-      requests_per_second: 10
-      burst_size: 20
+      requests_per_second: 2.5
+      burst_size: 5
     circuit_breaker:
       failure_threshold: 5
       recovery_timeout_sec: 30

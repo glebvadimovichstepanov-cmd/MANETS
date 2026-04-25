@@ -473,9 +473,11 @@ class TtechProvider(DataProvider):
                         
                         current_from = chunk_to
                         
-                        # Небольшая задержка между запросами для соблюдения rate limits
+                        # Задержка между запросами для соблюдения rate limits Tinkoff API
+                        # Лимит: 200 запросов в минуту = 3.33 req/s
+                        # Используем консервативную задержку 0.4s (2.5 req/s)
                         if current_from < to_dt:
-                            await asyncio.sleep(0.1)
+                            await asyncio.sleep(0.4)
                     
                     logger.info(f"T-Tech: Retrieved {len(all_candles)} candles for {instrument}")
                     return all_candles
@@ -484,6 +486,18 @@ class TtechProvider(DataProvider):
                 logger.error(f"t-tech-investments library not installed: {e}")
                 return []
             except Exception as e:
+                # Проверка на RESOURCE_EXHAUSTED (rate limit exceeded)
+                error_str = str(e)
+                if 'RESOURCE_EXHAUSTED' in error_str or 'ratelimit_remaining=0' in error_str:
+                    logger.warning(
+                        f"T-Tech API rate limit exceeded for {instrument}. "
+                        f"Waiting before retry... Error: {e}"
+                    )
+                    # Ждем восстановления лимита (обычно 60 секунд для Tinkoff)
+                    await asyncio.sleep(65)
+                    # Повторяем запрос с начала
+                    return await _fetch()
+                
                 logger.error(f"T-Tech API error for {instrument}: {e}")
                 raise
         
