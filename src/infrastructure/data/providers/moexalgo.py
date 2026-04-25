@@ -70,6 +70,7 @@ class MoexAlgoProvider(DataProvider):
             circuit_breaker_config=circuit_breaker_config
         )
         
+        self.config = config  # Сохраняем конфигурацию
         self.endpoints = config.get('endpoints', {})
         # MOEX API доступен только через публичный ISS API (apim.moex.com требует авторизации)
         self.base_url = 'https://iss.moex.com/iss'
