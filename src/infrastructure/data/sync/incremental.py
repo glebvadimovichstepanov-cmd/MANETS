@@ -29,6 +29,7 @@ from ..providers.base import DataProvider
 from ..storage.local_file import LocalFileStorage
 from ..cache.memcached import MemcachedClient
 from ..validator import DataValidator
+from ..config import DataCollectorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,8 @@ class IncrementalSynchronizer:
         storage: LocalFileStorage,
         cache: Optional[MemcachedClient] = None,
         validator: Optional[DataValidator] = None,
-        max_batch_size: int = 1000
+        max_batch_size: int = 1000,
+        config: Optional[DataCollectorConfig] = None
     ):
         """
         Инициализация синхронизатора.
@@ -70,12 +72,14 @@ class IncrementalSynchronizer:
             cache: Кэш (опционально).
             validator: Валидатор (опционально).
             max_batch_size: Максимальный размер батча за один запрос.
+            config: Конфигурация для определения глубины истории (опционально).
         """
         self.provider = provider
         self.storage = storage
         self.cache = cache
         self.validator = validator or DataValidator()
         self.max_batch_size = max_batch_size
+        self.config = config
     
     async def sync(
         self,
@@ -124,21 +128,36 @@ class IncrementalSynchronizer:
             from_dt = from_dt - self._get_tf_delta(timeframe)
             to_dt = datetime.now(timezone.utc)
         else:
-            # Для макро данных: начинаем с текущей даты и идем назад до пустоты
+            # Полная загрузка: используем глубину из конфига
             to_dt = datetime.now(timezone.utc)
-            # Начальная точка - 30 дней назад для первого батча
-            from_dt = to_dt - timedelta(days=30)
-            logger.info(f"No checkpoint found. Starting from {to_dt} going back to {from_dt}")
+            
+            if self.config:
+                # Используем глубину истории из конфигурации
+                depth_years = self.config.history_depth.get_depth_for_timeframe(timeframe.value)
+                from_dt = to_dt - timedelta(days=depth_years * 365)
+                logger.info(f"No checkpoint found. Using history depth of {depth_years} years for {timeframe.value}. From {from_dt} to {to_dt}")
+            else:
+                # Fallback: начинаем с 30 дней назад для первого батча
+                from_dt = to_dt - timedelta(days=30)
+                logger.info(f"No checkpoint and no config. Starting from {to_dt} going back to {from_dt}")
         
-        # Ограничение глубины для внутридневных таймфреймов (5 лет)
-        if timeframe in [Timeframe.S5, Timeframe.S10, Timeframe.S30,
-                         Timeframe.M1, Timeframe.M2, Timeframe.M3, Timeframe.M5,
-                         Timeframe.M10, Timeframe.M15, Timeframe.M30,
-                         Timeframe.H1, Timeframe.H2, Timeframe.H4]:
-            max_history = datetime.now(timezone.utc) - timedelta(days=5*365)
+        # Ограничение глубины для внутридневных таймфреймов из конфига (если есть)
+        if self.config:
+            depth_years = self.config.history_depth.get_depth_for_timeframe(timeframe.value)
+            max_history = datetime.now(timezone.utc) - timedelta(days=depth_years * 365)
             if from_dt < max_history:
                 from_dt = max_history
-                logger.info(f"Intraday TF detected. Limiting history to 5 years from {from_dt}")
+                logger.info(f"Limiting history to {depth_years} years ({max_history}) for {timeframe.value}")
+        else:
+            # Fallback: ограничение 5 годами для внутридневных TF
+            if timeframe in [Timeframe.S5, Timeframe.S10, Timeframe.S30,
+                             Timeframe.M1, Timeframe.M2, Timeframe.M3, Timeframe.M5,
+                             Timeframe.M10, Timeframe.M15, Timeframe.M30,
+                             Timeframe.H1, Timeframe.H2, Timeframe.H4]:
+                max_history = datetime.now(timezone.utc) - timedelta(days=5*365)
+                if from_dt < max_history:
+                    from_dt = max_history
+                    logger.info(f"Intraday TF detected. Limiting history to 5 years from {from_dt}")
         
         # Проверка необходимости загрузки
         if to_dt - from_dt < self._get_tf_delta(timeframe):

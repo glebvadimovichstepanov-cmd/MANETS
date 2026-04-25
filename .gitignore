@@ -1,40 +1,4 @@
 ```
-# Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-
-# Compiled and build artifacts
-*.o
-*.obj
-*.out
-*.so
-*.dll
-*.a
-
-# Dependencies
-.venv/
-venv/
-.env
-.env.local
-.env.*
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Editors
-.vscode/
-.idea/
-
-# Coverage reports
-.coverage
-coverage/
-htmlcov/
-
-# Testing
-.pytest_cache/
-.mypy_cache/
 ```

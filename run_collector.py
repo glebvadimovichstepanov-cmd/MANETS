@@ -238,7 +238,8 @@ async def main():
                                     provider=collector.primary_provider,
                                     storage=collector.storage,
                                     cache=collector.cache,
-                                    validator=collector.validator
+                                    validator=collector.validator,
+                                    config=collector.config
                                 )
                                 
                                 result = await synchronizer.sync(
@@ -344,7 +345,8 @@ async def main():
                                     provider=macro_provider,
                                     storage=collector.storage,
                                     cache=collector.cache,
-                                    validator=collector.validator
+                                    validator=collector.validator,
+                                    config=collector.config
                                 )
                                 
                                 result = await synchronizer.sync(
