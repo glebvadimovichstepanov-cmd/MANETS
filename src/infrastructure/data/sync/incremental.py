@@ -230,13 +230,23 @@ class IncrementalSynchronizer:
         # Сортировка всех свечей по timestamp (API может возвращать в обратном порядке)
         all_candles.sort(key=lambda c: c.timestamp)
         
+        # Отладка: проверяем порядок после сортировки
+        if all_candles:
+            logger.debug(f"After sorting: first={all_candles[0].timestamp}, last={all_candles[-1].timestamp}, total={len(all_candles)}")
+        
         # Конвертация в dict для хранения
         candles_dict = [self._candle_to_dict(c) for c in all_candles]
+        
+        # Отладка: проверяем первый и последний timestamp в dict
+        if candles_dict:
+            logger.debug(f"Dict candles: first_ts={candles_dict[0].get('timestamp')}, last_ts={candles_dict[-1].get('timestamp')}")
         
         # Валидация
         validation_result = await self._validate_and_check_causality(
             candles_dict, instrument, timeframe
         )
+        
+        logger.info(f"Validation result: passed={validation_result['passed']}, errors={validation_result.get('errors', [])}")
         
         if not validation_result['passed']:
             errors = validation_result.get('errors', [])
