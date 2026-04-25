@@ -781,23 +781,43 @@ class TtechProvider(DataProvider):
                 
         elif instrument in ['USD_RUB', 'EUR_RUB', 'CNY_RUB']:
             # Валютные пары - используем currency_by
+            # На Московской бирже валютные пары торгуются в классе VALNET (tom-расчеты)
             try:
                 mapped_figi = self._macro_ticker_map.get(instrument)
                 if mapped_figi:
+                    # Пробуем найти по FIGI через currency_by
                     response = await client.instruments.currency_by(
                         id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
                         id=mapped_figi
                     )
                     if response and hasattr(response, 'instrument'):
                         inst = response.instrument
-                        logger.info(f"T-Tech Macro: Found currency {instrument} via currency_by: instrument_id={inst.uid}, figi={inst.figi}")
+                        logger.info(f"T-Tech Macro: Found currency {instrument} via currency_by (FIGI): instrument_id={inst.uid}, figi={inst.figi}")
                         return inst.uid or inst.figi
             except Exception as e:
-                logger.debug(f"T-Tech Macro: currency_by failed for {instrument}: {e}")
-                
-            # Fallback
-            mapped_figi = self._macro_ticker_map.get(instrument, instrument)
-            if mapped_figi != instrument:
+                logger.debug(f"T-Tech Macro: currency_by (FIGI) failed for {instrument}: {e}")
+            
+            # Fallback: пробуем найти по тикеру в классе VALNET
+            try:
+                logger.info(f"T-Tech Macro: Searching currency {instrument} by ticker in VALNET class")
+                # Для валют используем тикер из маппинга (например, USD000UTSTOM)
+                mapped_ticker = self._macro_ticker_map.get(instrument, instrument)
+                response = await client.instruments.currency_by(
+                    id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+                    class_code='VALNET',
+                    id=mapped_ticker
+                )
+                if response and hasattr(response, 'instrument'):
+                    inst = response.instrument
+                    logger.info(f"T-Tech Macro: Found currency {instrument} via currency_by (VALNET): instrument_id={inst.uid}, figi={inst.figi}, ticker={inst.ticker}")
+                    return inst.uid or inst.figi
+            except Exception as e:
+                logger.debug(f"T-Tech Macro: currency_by (VALNET) failed for {instrument}: {e}")
+            
+            # Fallback: используем FIGI напрямую
+            mapped_figi = self._macro_ticker_map.get(instrument)
+            if mapped_figi and mapped_figi != instrument:
+                logger.info(f"T-Tech Macro: Using mapped FIGI {mapped_figi} for currency {instrument} (fallback)")
                 return mapped_figi
                 
         elif instrument in ['BRENT', 'NATURAL_GAS']:
