@@ -146,8 +146,12 @@ class MoexAlgoProvider(DataProvider):
             'GBP_RUB': 'GBPRUB_TOM',
             'KZT_RUB': 'KZTRUB_TOM',
             
-            # Товары - фьючерсы
-            'BRENT': 'BR',           # Фьючерс на Brent
+            # Товары - фьючерсы на Brent
+            # BR - базовый тикер, но для реальных данных нужно использовать конкретный контракт
+            # Формат: BR + буква месяца + год (2 цифры)
+            # Месяцы: H=Март, M=Июнь, U=Сентябрь, Z=Декабрь
+            # Для автоматического выбора актуального контракта используется логика в get_moex_code
+            'BRENT': 'BR',           # Базовый код, будет заменен на актуальный контракт
             'NATURAL_GAS': 'NG',     # Фьючерс на Natural Gas
             'GOLD': 'GLD',           # Фьючерс на золото
             'SILVER': 'SLV',         # Фьючерс на серебро
@@ -188,6 +192,22 @@ class MoexAlgoProvider(DataProvider):
             # OFZ облигации (ISIN коды = FIGI для облигаций)
             'OFZ_26238': 'SU26238RMFS4',
             'OFZ_26244': 'SU26244RMFS2'
+        }
+        
+        # Коды месяцев для фьючерсов MOEX
+        self._futures_month_codes = {
+            1: 'F',   # Январь
+            2: 'G',   # Февраль
+            3: 'H',   # Март
+            4: 'J',   # Апрель
+            5: 'K',   # Май
+            6: 'M',   # Июнь
+            7: 'N',   # Июль
+            8: 'Q',   # Август
+            9: 'U',   # Сентябрь
+            10: 'V',  # Октябрь
+            11: 'X',  # Ноябрь
+            12: 'Z'   # Декабрь
         }
         
         # Инструменты, которые требуют специального处理方式
@@ -238,21 +258,79 @@ class MoexAlgoProvider(DataProvider):
         # Fallback на старый маппинг
         return self._figi_map.get(instrument)
     
-    def get_moex_code(self, instrument: str) -> Optional[str]:
+    def get_moex_code(self, instrument: str, from_dt: Optional[datetime] = None) -> Optional[str]:
         """
         Получение кода инструмента MOEX.
         
+        Для фьючерсов (BRENT, NATURAL_GAS, GOLD, SILVER) автоматически определяет
+        актуальный контракт на основе даты запроса.
+        
         Args:
             instrument: Тикер инструмента.
+            from_dt: Дата начала запроса (для определения контракта фьючерса).
             
         Returns:
             Код MOEX или None если не найден.
         """
         # Сначала пробуем получить из конфигурации
         if instrument in self._macro_instruments_map:
-            return self._macro_instruments_map[instrument].get('moex_code')
+            moex_code = self._macro_instruments_map[instrument].get('moex_code')
+            # Если в конфиге указан базовый код фьючерса (BR, NG, GLD, SLV),
+            # нужно определить конкретный контракт
+            if moex_code in ['BR', 'NG', 'GLD', 'SLV'] and from_dt:
+                return self._get_futures_contract_code(moex_code, from_dt)
+            return moex_code
+        
         # Fallback на старый маппинг
-        return self._macro_ticker_map.get(instrument)
+        base_code = self._macro_ticker_map.get(instrument)
+        if base_code in ['BR', 'NG', 'GLD', 'SLV'] and from_dt:
+            return self._get_futures_contract_code(base_code, from_dt)
+        return base_code
+    
+    def _get_futures_contract_code(self, base_code: str, from_dt: datetime) -> str:
+        """
+        Определение кода конкретного фьючерсного контракта.
+        
+        Формат: {BASE}{MONTH}{YEAR}
+        Примеры: BRM6 (Brent июнь 2026), BRU6 (Brent сентябрь 2026)
+        
+        Логика выбора:
+        - Выбирается ближайший квартальный контракт (Март, Июнь, Сентябрь, Декабрь)
+        - Контракт должен быть еще активен (дата экспирации не прошла)
+        - По умолчанию выбирается контракт через 1-3 месяца от текущей даты
+        
+        Args:
+            base_code: Базовый код фьючерса (BR, NG, GLD, SLV).
+            from_dt: Дата начала запроса.
+            
+        Returns:
+            Полный код контракта (например, BRM6).
+        """
+        # Квартальные месяцы для фьючерсов
+        quarter_months = [3, 6, 9, 12]
+        
+        year = from_dt.year
+        month = from_dt.month
+        
+        # Находим следующий квартальный месяц
+        next_quarter_month = None
+        for qm in quarter_months:
+            if qm >= month:
+                next_quarter_month = qm
+                break
+        
+        # Если все квартальные месяцы в этом году уже прошли, берем первый квартал следующего года
+        if next_quarter_month is None:
+            next_quarter_month = 3  # Март
+            year += 1
+        
+        # Получаем буквенный код месяца
+        month_letter = self._futures_month_codes.get(next_quarter_month, 'H')
+        
+        # Две последние цифры года
+        year_suffix = str(year)[-2:]
+        
+        return f"{base_code}{month_letter}{year_suffix}"
     
     def get_moex_board(self, instrument: str) -> Optional[str]:
         """
@@ -512,11 +590,12 @@ class MoexAlgoProvider(DataProvider):
                 # Макро-инструменты (валюты, индексы, товары, облигации)
                 # Валюты используют engine=currency, market=selt
                 # Индексы используют engine=stock, market=index
-                # Товары используют engine=stock, market=main
+                # Товары (фьючерсы) используют engine=futures, market=forts
                 # Облигации используют engine=stock, market=bonds
                 
-                # Используем moex_code из конфига через get_moex_code, fallback на старый маппинг
-                ticker = self.get_moex_code(instrument) or self._macro_ticker_map.get(instrument, instrument)
+                # Используем moex_code из конфига через get_moex_code с передачей from_dt
+                # для автоматического определения контракта фьючерса
+                ticker = self.get_moex_code(instrument, from_dt) or self._macro_ticker_map.get(instrument, instrument)
                 
                 # Получаем board из конфига
                 board = self.get_moex_board(instrument)
@@ -538,11 +617,12 @@ class MoexAlgoProvider(DataProvider):
                     if not board:
                         board = 'TQCB'  # По умолчанию корпоративные, но OFZ лучше на TQCB
                 else:
-                    # Товары
-                    engine = 'stock'
-                    market = 'main'
+                    # Товары - фьючерсы (BRENT, NATURAL_GAS, GOLD, SILVER)
+                    # Фьючерсы торгуются на FORTS (Forts Derivatives Market)
+                    engine = 'futures'
+                    market = 'forts'
                     if not board:
-                        board = 'MAIN'
+                        board = 'SPBFUT'  # Основная площадка для фьючерсов
                 
                 # Формируем URL с board для надежного получения данных
                 url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
@@ -651,7 +731,7 @@ class MoexAlgoProvider(DataProvider):
             
             # Построение URL
             if is_macro:
-                ticker = self._macro_ticker_map.get(instrument, instrument)
+                ticker = self.get_moex_code(instrument, from_dt) or self._macro_ticker_map.get(instrument, instrument)
                 
                 if is_currency:
                     engine = 'currency'
@@ -662,9 +742,10 @@ class MoexAlgoProvider(DataProvider):
                     market = 'index'
                     board = 'INDEX'
                 else:
-                    engine = 'stock'
-                    market = 'main'
-                    board = 'MAIN'
+                    # Товары - фьючерсы
+                    engine = 'futures'
+                    market = 'forts'
+                    board = 'SPBFUT'
                 
                 url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/orderbook"
             else:
@@ -759,7 +840,7 @@ class MoexAlgoProvider(DataProvider):
             
             # Построение URL
             if is_macro:
-                ticker = self._macro_ticker_map.get(instrument, instrument)
+                ticker = self.get_moex_code(instrument, from_dt) or self._macro_ticker_map.get(instrument, instrument)
                 
                 if is_currency:
                     engine = 'currency'
@@ -770,9 +851,10 @@ class MoexAlgoProvider(DataProvider):
                     market = 'index'
                     board = 'INDEX'
                 else:
-                    engine = 'stock'
-                    market = 'main'
-                    board = 'MAIN'
+                    # Товары - фьючерсы
+                    engine = 'futures'
+                    market = 'forts'
+                    board = 'SPBFUT'
                 
                 url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/trades"
             else:

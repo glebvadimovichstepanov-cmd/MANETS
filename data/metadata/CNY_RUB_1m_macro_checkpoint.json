@@ -1,9 +1,9 @@
 {
   "instrument": "CNY_RUB",
-  "timeframe": "1m",
+  "timeframe": "1M",
   "data_type": "macro",
-  "last_timestamp": "2026-03-26T18:18:00",
-  "last_sync_at": "2026-04-25T13:03:11.207915",
+  "last_timestamp": "2026-04-01T00:00:00",
+  "last_sync_at": "2026-04-25T13:02:37.988239",
   "source_chain": [
     "moexalgo"
   ],
