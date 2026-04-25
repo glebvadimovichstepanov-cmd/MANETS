@@ -582,21 +582,32 @@ class TtechProvider(DataProvider):
                 )
                 
                 # Конвертация в наши модели
-                bids = [
-                    L2OrderLevel(
-                        price=self._quotation_to_decimal(bid.price),
-                        volume=Decimal(str(bid.quantity))
+                # t_tech.invest использует поле 'volume' вместо 'quantity'
+                bids = []
+                for bid in ob_response.bids:
+                    vol = getattr(bid, 'volume', None) or getattr(bid, 'quantity', None)
+                    if vol is None:
+                        logger.warning(f"Orderbook bid has no volume/quantity field: {bid}")
+                        vol = Decimal('0')
+                    bids.append(
+                        L2OrderLevel(
+                            price=self._quotation_to_decimal(bid.price),
+                            volume=Decimal(str(vol))
+                        )
                     )
-                    for bid in ob_response.bids
-                ]
                 
-                asks = [
-                    L2OrderLevel(
-                        price=self._quotation_to_decimal(ask.price),
-                        volume=Decimal(str(ask.quantity))
+                asks = []
+                for ask in ob_response.asks:
+                    vol = getattr(ask, 'volume', None) or getattr(ask, 'quantity', None)
+                    if vol is None:
+                        logger.warning(f"Orderbook ask has no volume/quantity field: {ask}")
+                        vol = Decimal('0')
+                    asks.append(
+                        L2OrderLevel(
+                            price=self._quotation_to_decimal(ask.price),
+                            volume=Decimal(str(vol))
+                        )
                     )
-                    for ask in ob_response.asks
-                ]
                 
                 return L2OrderBook(
                     timestamp=self._timestamp_to_datetime(ob_response.orderbook_ts) if hasattr(ob_response, 'orderbook_ts') else datetime.utcnow(),
