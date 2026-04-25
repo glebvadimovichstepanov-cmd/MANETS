@@ -560,18 +560,32 @@ class TtechProvider(DataProvider):
                     source=DataSource.TTECH
                 )
             
-            # Получаем instrument_id
+            # Получаем instrument_id с поддержкой разных классов инструментов
             instrument_id = None
+            class_codes_to_try = ['TQBR', 'TQCB', 'TQOB', 'EQBR']  # Акции, Облигации (CBR/MSBR), Валюты
+            
             try:
                 async with AsyncClient(token=self.token) as client:
-                    response = await client.instruments.share_by(
-                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
-                        class_code='TQBR',
-                        id=instrument
-                    )
-                    instrument_id = response.instrument.uid or response.instrument.figi
+                    for class_code in class_codes_to_try:
+                        try:
+                            response = await client.instruments.share_by(
+                                id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+                                class_code=class_code,
+                                id=instrument
+                            )
+                            instrument_id = response.instrument.uid or response.instrument.figi
+                            logger.debug(f"T-Tech: Found instrument_id={instrument_id} (class={class_code}) for ticker {instrument}")
+                            break
+                        except Exception as e:
+                            logger.debug(f"T-Tech: Instrument '{instrument}' not found in class_code={class_code}: {e}")
+                            continue
+                    
+                    if not instrument_id:
+                        # Пытаемся использовать тикер как есть (возможно это FIGI или UID)
+                        instrument_id = instrument
+                        logger.warning(f"T-Tech: Could not find instrument '{instrument}' in any class code. Using as-is: {instrument_id}")
             except Exception as e:
-                logger.warning(f"Could not find instrument '{instrument}': {e}. Using as-is.")
+                logger.error(f"T-Tech: Error resolving instrument '{instrument}': {e}. Using as-is.")
                 instrument_id = instrument
             
             # Запрос стакана
@@ -618,9 +632,11 @@ class TtechProvider(DataProvider):
                 )
         
         try:
-            return await self._execute_with_protection(
-                await self._retry_with_backoff(_fetch, f"get_orderbook:{instrument}")
-            )
+            # Передаем корутину правильно - создаем её внутри _execute_with_protection
+            async def _execute_fetch():
+                return await self._retry_with_backoff(_fetch(), f"get_orderbook:{instrument}")
+            
+            return await self._execute_with_protection(_execute_fetch())
         except Exception as e:
             logger.error(f"T-Tech get_orderbook failed for {instrument}: {e}")
             raise

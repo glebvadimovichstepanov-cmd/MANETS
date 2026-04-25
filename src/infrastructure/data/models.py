@@ -132,8 +132,10 @@ class Candle(BaseModel):
 
 class L2OrderLevel(BaseModel):
     """Уровень стакана (цена + объём + количество заявок)."""
+    model_config = ConfigDict(populate_by_name=True)
+    
     price: Decimal = Field(..., ge=0, description="Цена уровня")
-    qty: Decimal = Field(..., ge=0, description="Объём на уровне")
+    volume: Decimal = Field(..., ge=0, validation_alias="qty", serialization_alias="qty", description="Объём на уровне")
     orders: int = Field(default=1, ge=1, description="Количество заявок")
 
 
