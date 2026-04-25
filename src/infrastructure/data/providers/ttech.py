@@ -1219,7 +1219,7 @@ class TtechProvider(DataProvider):
         - trades: все тикеры
         - fundamentals: акции
         - events: акции
-        - macro: валюты, товары, индексы, ставки (см. _supported_macro)
+        - macro: только USD_RUB и EUR_RUB (остальные через MoexAlgo)
         
         Args:
             data_type: Тип данных.
@@ -1228,9 +1228,9 @@ class TtechProvider(DataProvider):
         Returns:
             True если поддерживается.
         """
-        # Проверка макро-данных
+        # Проверка макро-данных - только USD_RUB и EUR_RUB
         if data_type == 'macro':
-            return instrument in self._supported_macro
+            return instrument in {'USD_RUB', 'EUR_RUB'}
         
         supported_types = ['ohlcv', 'lob', 'trades', 'fundamentals', 'events']
         return data_type in supported_types

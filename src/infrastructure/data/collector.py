@@ -30,6 +30,7 @@ from .models import (
 from .config import DataCollectorConfig, load_config
 from .providers.base import DataProvider, ProviderRouter
 from .providers.ttech import TtechProvider
+from .providers.moexalgo import MoexAlgoProvider
 from .cache.memcached import MemcachedClient
 from .storage.local_file import LocalFileStorage
 from .sync.incremental import IncrementalSynchronizer, CausalityError, IncrementalSyncError
@@ -105,7 +106,7 @@ class DataCollector:
         
         prov_configs = self.config.providers
         
-        # T-Tech (primary)
+        # T-Tech (primary) - только для USD_RUB и EUR_RUB в macro
         if 'primary' in prov_configs:
             cfg = prov_configs['primary']
             try:
@@ -135,6 +136,25 @@ class DataCollector:
                 logger.error(f"Failed to import T-Tech dependencies: {ie}. Please install t-tech-investments package.", exc_info=True)
             except Exception as e:
                 logger.error(f"Failed to initialize T-Tech provider: {e}", exc_info=True)
+        
+        # MoexAlgo (secondary) - для всех остальных macro инструментов
+        if 'secondary' in prov_configs:
+            cfg = prov_configs['secondary']
+            try:
+                logger.info(f"Initializing MoexAlgo provider with config: priority={cfg.priority}, base_url={cfg.endpoints.get('base_url', 'N/A')}")
+                
+                provider_instance = MoexAlgoProvider(
+                    config={
+                        'priority': cfg.priority,
+                        'endpoints': cfg.endpoints
+                    },
+                    rate_limit_config=cfg.rate_limit.model_dump() if cfg.rate_limit else None,
+                    circuit_breaker_config=cfg.circuit_breaker.model_dump() if cfg.circuit_breaker else None
+                )
+                providers.append(provider_instance)
+                logger.info("MoexAlgo provider initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize MoexAlgo provider: {e}", exc_info=True)
         
         if not providers:
             logger.critical("No providers were initialized! Data collection will fail.")
