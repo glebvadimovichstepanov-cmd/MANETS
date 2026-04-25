@@ -254,8 +254,7 @@ class MemcachedClient:
                 self._client = aiomcache.Client(
                     host=host_info['host'],
                     port=host_info['port'],
-                    pool_size=10,
-                    max_idle_time=300
+                    pool_size=10
                 )
                 
                 logger.info(f"Connected to Memcached at {host_info['host']}:{host_info['port']}")
