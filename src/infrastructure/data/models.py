@@ -27,11 +27,18 @@ from pydantic.v1 import BaseModel as V1BaseModel  # Для обратной со
 
 class Timeframe(str, Enum):
     """Поддерживаемые таймфреймы."""
+    S5 = "5s"
+    S10 = "10s"
+    S30 = "30s"
     M1 = "1m"
+    M2 = "2m"
+    M3 = "3m"
     M5 = "5m"
     M10 = "10m"
     M15 = "15m"
+    M30 = "30m"
     H1 = "1h"
+    H2 = "2h"
     H4 = "4h"
     D1 = "1d"
     W1 = "1w"

@@ -3,9 +3,6 @@
 Скрипт запуска сбора данных для проекта MANETS.
 
 Использование:
-    python run_collector.py [--config path/to/config.yaml] [--tickers TICKER1,TICKER2,...] [--timeframes M1,H1,D1]
-
-Примеры:
     # Запуск с конфигом по умолчанию
     python run_collector.py
 
@@ -17,14 +14,33 @@
 
     # Запуск для конкретных таймфреймов
     python run_collector.py --timeframes M1,H1,D1
+
+    # Только стаканы (L2)
+    python run_collector.py --data-type lob --depth 10
+
+    # Только макро-данные
+    python run_collector.py --data-type macro
+
+    # Только OHLCV свечи (по умолчанию)
+    python run_collector.py --data-type ohlcv
+
+    # Инкрементальная загрузка (проверяет checkpoint)
+    python run_collector.py --incremental
+
+    # Полная перезагрузка (игнорирует checkpoint)
+    python run_collector.py --full-reload
 """
 
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from src.infrastructure.data.collector import DataCollector
 
 # Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent))
@@ -68,16 +84,28 @@ def parse_args() -> argparse.Namespace:
         help="Список таймфреймов через запятую (переопределяет конфиг)"
     )
     parser.add_argument(
-        "--start-date",
+        "--data-type",
         type=str,
-        default=None,
-        help="Дата начала сбора в формате YYYY-MM-DD (переопределяет конфиг)"
+        choices=["ohlcv", "lob", "macro", "all"],
+        default="ohlcv",
+        help="Тип данных для сбора: ohlcv (свечи), lob (стаканы), macro (макро), all (все)"
     )
     parser.add_argument(
-        "--end-date",
-        type=str,
-        default=None,
-        help="Дата окончания сбора в формате YYYY-MM-DD (переопределяет конфиг)"
+        "--depth",
+        type=int,
+        default=10,
+        help="Глубина стакана для L2 данных (1-20, по умолчанию 10)"
+    )
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        default=True,
+        help="Инкрементальная загрузка (проверяет checkpoint, по умолчанию включено)"
+    )
+    parser.add_argument(
+        "--full-reload",
+        action="store_true",
+        help="Полная перезагрузка (игнорирует checkpoint)"
     )
     parser.add_argument(
         "--dry-run",
@@ -132,23 +160,49 @@ async def main():
             
         if args.timeframes:
             tf_map = {
-                'M1': Timeframe.M1, 'M5': Timeframe.M5, 'M10': Timeframe.M10,
-                'M15': Timeframe.M15, 'H1': Timeframe.H1, 'H4': Timeframe.H4,
+                '5s': Timeframe.M1, '10s': Timeframe.M1, '30s': Timeframe.M1,
+                'M1': Timeframe.M1, 'M2': Timeframe.M1, 'M3': Timeframe.M1,
+                'M5': Timeframe.M5, 'M10': Timeframe.M10,
+                'M15': Timeframe.M15, 'M30': Timeframe.M30,
+                'H1': Timeframe.H1, 'H2': Timeframe.H1,
+                'H4': Timeframe.H4, 
                 'D1': Timeframe.D1, 'W1': Timeframe.W1, 'MN': Timeframe.MN
             }
-            timeframes = [tf_map[tf.strip().upper()] for tf in args.timeframes.split(',')]
-            config.timeframes = timeframes
-            logger.info(f"Таймфреймы переопределены: {[tf.value for tf in timeframes]}")
+            timeframes = []
+            for tf in args.timeframes.split(','):
+                tf_clean = tf.strip().upper()
+                if tf_clean in tf_map:
+                    timeframes.append(tf_map[tf_clean])
+                else:
+                    logger.warning(f"Неизвестный таймфрейм: {tf}, пропускаем")
+            
+            if timeframes:
+                config.timeframes = timeframes
+                logger.info(f"Таймфреймы переопределены: {[tf.value for tf in timeframes]}")
         else:
             timeframes = config.timeframes
+        
+        # Определение типа данных и режима загрузки
+        data_types = []
+        if args.data_type == "all":
+            data_types = ["ohlcv", "lob", "macro"]
+        else:
+            data_types = [args.data_type]
+        
+        force_full = args.full_reload
+        incremental = not force_full
         
         logger.info(f"Параметры сбора:")
         logger.info(f"  Тикеры: {tickers}")
         logger.info(f"  Таймфреймы: {[tf.value for tf in timeframes]}")
+        logger.info(f"  Типы данных: {data_types}")
+        logger.info(f"  Режим: {'incremental' if incremental else 'full_reload'}")
+        if "lob" in data_types:
+            logger.info(f"  Глубина стакана: {args.depth}")
         
         # Создание коллектора данных
         logger.info("Инициализация DataCollector...")
-        collector: Optional[DataCollector] = None
+        collector: Optional["DataCollector"] = None
         try:
             collector = DataCollector(config=config)
             
@@ -167,40 +221,159 @@ async def main():
             
             await collector.start()
             
-            total_candles = 0
-            for ticker in tickers:
-                for timeframe in timeframes:
+            total_records = 0
+            
+            # Сбор OHLCV свечей
+            if "ohlcv" in data_types:
+                for ticker in tickers:
+                    for timeframe in timeframes:
+                        try:
+                            logger.info(f"Сбор OHLCV: {ticker} [{timeframe.value}]")
+                            
+                            # Инкрементальная загрузка через synchronizer
+                            if incremental:
+                                from src.infrastructure.data.sync.incremental import IncrementalSynchronizer
+                                
+                                synchronizer = IncrementalSynchronizer(
+                                    provider=collector.primary_provider,
+                                    storage=collector.storage,
+                                    cache=collector.cache,
+                                    validator=collector.validator
+                                )
+                                
+                                result = await synchronizer.sync(
+                                    instrument=ticker,
+                                    timeframe=timeframe,
+                                    data_type="ohlcv",
+                                    force_full=force_full
+                                )
+                                
+                                count = result.get('new_bars', 0)
+                                total_records += count
+                                
+                                if result['status'] == 'success':
+                                    logger.info(f"  ✓ Загружено {count} новых свечей")
+                                elif result['status'] == 'no_op':
+                                    logger.info(f"  ✓ Данные актуальны (загрузка не требуется)")
+                                else:
+                                    logger.warning(f"  ⚠ Статус: {result['status']}")
+                            else:
+                                # Полная загрузка (старый метод)
+                                candles = await collector.collect(
+                                    instrument=ticker,
+                                    timeframe=timeframe
+                                )
+                                
+                                if candles:
+                                    count = len(candles)
+                                    total_records += count
+                                    logger.info(f"  ✓ Получено {count} свечей")
+                                    
+                                    # Сохранение данных через storage
+                                    candles_dict = [c.model_dump(mode='json') for c in candles]
+                                    await collector.storage.write_ohlcv(
+                                        ticker=ticker,
+                                        timeframe=timeframe.value,
+                                        candles=candles_dict
+                                    )
+                                    logger.info(f"  ✓ Данные сохранены")
+                                else:
+                                    logger.warning(f"  ⚠ Нет данных для {ticker} [{timeframe.value}]")
+                                    
+                        except Exception as e:
+                            logger.error(f"  ✗ Ошибка при сборе {ticker} [{timeframe.value}]: {e}", exc_info=args.verbose)
+            
+            # Сбор стаканов (L2)
+            if "lob" in data_types:
+                for ticker in tickers:
                     try:
-                        logger.info(f"Сбор данных: {ticker} [{timeframe.value}]")
+                        logger.info(f"Сбор стакана L2: {ticker} (depth={args.depth})")
                         
-                        candles = await collector.collect(
+                        orderbook = await collector.primary_provider.get_orderbook(
                             instrument=ticker,
-                            timeframe=timeframe
+                            depth=args.depth
                         )
                         
-                        if candles:
-                            count = len(candles)
-                            total_candles += count
-                            logger.info(f"  ✓ Получено {count} свечей")
+                        if orderbook and (orderbook.bids or orderbook.asks):
+                            total_records += 1
+                            logger.info(f"  ✓ Получен стакан: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
                             
-                            # Сохранение данных через storage
-                            candles_dict = [c.model_dump(mode='json') for c in candles]
-                            await collector.storage.write_ohlcv(
+                            # Сохранение стакана
+                            await collector.storage.write_orderbook(
                                 ticker=ticker,
-                                timeframe=timeframe.value,
-                                candles=candles_dict
+                                orderbook=orderbook
                             )
                             logger.info(f"  ✓ Данные сохранены")
                         else:
-                            logger.warning(f"  ⚠ Нет данных для {ticker} [{timeframe.value}]")
+                            logger.warning(f"  ⚠ Пустой стакан для {ticker}")
                             
                     except Exception as e:
-                        logger.error(f"  ✗ Ошибка при сборе {ticker} [{timeframe.value}]: {e}", exc_info=args.verbose)
+                        logger.error(f"  ✗ Ошибка при сборе стакана {ticker}: {e}", exc_info=args.verbose)
+            
+            # Сбор макро-данных
+            if "macro" in data_types:
+                macro_instruments = config.instruments.macro.currencies + \
+                                   config.instruments.macro.commodities + \
+                                   config.instruments.macro.indices + \
+                                   config.instruments.macro.rates
+                
+                logger.info(f"Сбор макро-данных: {macro_instruments}")
+                
+                for macro_inst in macro_instruments:
+                    for timeframe in timeframes:
+                        try:
+                            logger.info(f"Сбор макро: {macro_inst} [{timeframe.value}]")
+                            
+                            # Инкрементальная загрузка
+                            if incremental:
+                                from src.infrastructure.data.sync.incremental import IncrementalSynchronizer
+                                
+                                synchronizer = IncrementalSynchronizer(
+                                    provider=collector.primary_provider,
+                                    storage=collector.storage,
+                                    cache=collector.cache,
+                                    validator=collector.validator
+                                )
+                                
+                                result = await synchronizer.sync(
+                                    instrument=macro_inst,
+                                    timeframe=timeframe,
+                                    data_type="macro",
+                                    force_full=force_full
+                                )
+                                
+                                count = result.get('new_bars', 0)
+                                total_records += count
+                                
+                                if result['status'] == 'success':
+                                    logger.info(f"  ✓ Загружено {count} макро-баров")
+                                elif result['status'] == 'no_op':
+                                    logger.info(f"  ✓ Данные актуальны")
+                                else:
+                                    logger.warning(f"  ⚠ Статус: {result['status']}")
+                            else:
+                                # Полная загрузка
+                                macro_candles = await collector.primary_provider.get_macro(
+                                    instrument=macro_inst,
+                                    timeframe=timeframe,
+                                    from_dt=None,
+                                    to_dt=None
+                                )
+                                
+                                if macro_candles:
+                                    count = len(macro_candles)
+                                    total_records += count
+                                    logger.info(f"  ✓ Получено {count} макро-баров")
+                                else:
+                                    logger.warning(f"  ⚠ Нет макро-данных для {macro_inst}")
+                                    
+                        except Exception as e:
+                            logger.error(f"  ✗ Ошибка при сборе макро {macro_inst}: {e}", exc_info=args.verbose)
             
             await collector.stop()
             
             logger.info("-" * 60)
-            logger.info(f"Сбор данных завершен. Всего получено свечей: {total_candles}")
+            logger.info(f"Сбор данных завершен. Всего получено записей: {total_records}")
             logger.info(f"Данные сохранены в: {config.storage.base_path}")
             
         except KeyboardInterrupt:
