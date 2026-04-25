@@ -30,7 +30,6 @@ from .models import (
 from .config import DataCollectorConfig, load_config
 from .providers.base import DataProvider, ProviderRouter
 from .providers.ttech import TtechProvider
-from .providers.stub import StubProvider
 from .cache.memcached import MemcachedClient
 from .storage.local_file import LocalFileStorage
 from .sync.incremental import IncrementalSynchronizer, CausalityError, IncrementalSyncError
@@ -137,28 +136,8 @@ class DataCollector:
             except Exception as e:
                 logger.error(f"Failed to initialize T-Tech provider: {e}", exc_info=True)
         
-        # Stub (fallback - всегда включен)
-        if 'fallback' in prov_configs:
-            cfg = prov_configs['fallback']
-            try:
-                logger.info("Initializing Stub provider as fallback")
-                provider_instance = StubProvider(
-                    config={
-                        'priority': cfg.priority,
-                        'quality_score_override': cfg.quality_score_override,
-                        'warning_on_use': cfg.warning_on_use
-                    },
-                    rate_limit_config={'requests_per_second': 100.0, 'burst_size': 200}
-                )
-                providers.append(provider_instance)
-                logger.info("Stub provider initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize Stub provider: {e}", exc_info=True)
-        
         if not providers:
             logger.critical("No providers were initialized! Data collection will fail.")
-        elif len(providers) == 1 and isinstance(providers[0], StubProvider):
-            logger.warning("Only Stub provider is available. Real data will not be fetched.")
         
         return providers
     

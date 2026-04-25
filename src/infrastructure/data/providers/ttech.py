@@ -154,7 +154,33 @@ class TtechProvider(DataProvider):
         
         # Поддерживаемые инструменты (будет заполнено из конфига)
         self._supported_tickers = set()
-        self._supported_macro = set()
+        
+        # Поддерживаемые макро-инструменты T-Tech API
+        self._supported_macro = {
+            # Валюты
+            'USD_RUB', 'EUR_RUB', 'CNY_RUB',
+            # Товары
+            'BRENT', 'NATURAL_GAS',
+            # Индексы
+            'MOEX_INDEX', 'RTS_INDEX',
+            # Ставки и облигации
+            'CBR_KEY_RATE', 'OFZ_26238', 'OFZ_26244', 'RUONIA'
+        }
+        
+        # Маппинг тикеров для API запросов (ticker -> instrument_id для T-Tech)
+        self._macro_ticker_map = {
+            'USD_RUB': 'USD000UTSTOM',  # USD/RUB tom
+            'EUR_RUB': 'EUR000UTSTOM',  # EUR/RUB tom
+            'CNY_RUB': 'CNY000UTSTOM',  # CNY/RUB tom
+            'BRENT': 'BRNF',  # Brent crude futures
+            'NATURAL_GAS': 'NG',  # Natural Gas futures
+            'MOEX_INDEX': 'IMOEX',  # MOEX Russia Index
+            'RTS_INDEX': 'IRTS',  # RTS Index
+            'CBR_KEY_RATE': 'CBR_KEY_RATE',  # Key rate (special)
+            'OFZ_26238': 'SU26238RMFS4',  # OFZ bond
+            'OFZ_26244': 'SU26244RMFS2',  # OFZ bond
+            'RUONIA': 'RUONIA',  # RUONIA index
+        }
     
     def _quotation_to_decimal(self, quotation: Any) -> Decimal:
         """
@@ -627,11 +653,13 @@ class TtechProvider(DataProvider):
         to_dt: datetime
     ) -> List[MacroCandle]:
         """
-        Получение макро-данных.
+        Получение макро-данных от T-Tech.
         
-        T-Tech не предоставляет макро-данные напрямую,
-        поэтому этот метод возвращает пустой список.
-        Используйте CBR provider для макро.
+        Поддерживаемые инструменты:
+        - Валюты: USD_RUB, EUR_RUB, CNY_RUB
+        - Товары: BRENT, NATURAL_GAS
+        - Индексы: MOEX_INDEX, RTS_INDEX
+        - Ставки: CBR_KEY_RATE, OFZ_26238, OFZ_26244, RUONIA
         
         Args:
             instrument: Макро-инструмент.
@@ -640,10 +668,194 @@ class TtechProvider(DataProvider):
             to_dt: Конец периода.
             
         Returns:
-            Пустой список (T-Tech не поддерживает макро).
+            Список макро-свечей.
         """
-        logger.debug(f"T-Tech: Macro data not supported for {instrument}")
-        return []
+        async def _fetch():
+            logger.debug(
+                f"T-Tech: Fetching macro for {instrument} {timeframe.value} "
+                f"from {from_dt} to {to_dt}"
+            )
+            
+            # Проверка доступности библиотеки
+            if not TTECH_LIBRARY_AVAILABLE:
+                logger.error(
+                    "t_tech.invest library is not installed. "
+                    "Cannot fetch real macro data from T-Tech API. "
+                    "Returning empty list."
+                )
+                return []
+            
+            # Проверка поддержки инструмента
+            if instrument not in self._supported_macro:
+                logger.warning(f"Macro instrument {instrument} not supported by T-Tech")
+                return []
+            
+            try:
+                # Маппинг таймфреймов на CandleInterval
+                timeframe_map = {
+                    '5s': CandleInterval.CANDLE_INTERVAL_5_SEC,
+                    '10s': CandleInterval.CANDLE_INTERVAL_10_SEC,
+                    '30s': CandleInterval.CANDLE_INTERVAL_30_SEC,
+                    '1m': CandleInterval.CANDLE_INTERVAL_1_MIN,
+                    '2m': CandleInterval.CANDLE_INTERVAL_2_MIN,
+                    '3m': CandleInterval.CANDLE_INTERVAL_3_MIN,
+                    '5m': CandleInterval.CANDLE_INTERVAL_5_MIN,
+                    '10m': CandleInterval.CANDLE_INTERVAL_10_MIN,
+                    '15m': CandleInterval.CANDLE_INTERVAL_15_MIN,
+                    '30m': CandleInterval.CANDLE_INTERVAL_30_MIN,
+                    '1h': CandleInterval.CANDLE_INTERVAL_HOUR,
+                    '2h': CandleInterval.CANDLE_INTERVAL_2_HOUR,
+                    '4h': CandleInterval.CANDLE_INTERVAL_4_HOUR,
+                    '1d': CandleInterval.CANDLE_INTERVAL_DAY,
+                    '1w': CandleInterval.CANDLE_INTERVAL_WEEK,
+                    '1M': CandleInterval.CANDLE_INTERVAL_MONTH,
+                }
+                
+                interval = timeframe_map.get(timeframe.value)
+                if interval is None:
+                    logger.warning(f"Unsupported timeframe for macro: {timeframe.value}")
+                    return []
+                
+                # Получение instrument_id из маппинга
+                instrument_id = self._macro_ticker_map.get(instrument, instrument)
+                logger.debug(f"T-Tech: Using instrument_id={instrument_id} for macro {instrument}")
+                
+                # Очистка токена
+                clean_token = self.token
+                if clean_token.startswith('t.'):
+                    pass  # Оставляем как есть
+                
+                async with AsyncClient(token=clean_token) as client:
+                    # Для макро-инструментов используем разные методы в зависимости от типа
+                    # Валюты, товары, индексы - через candle_by (аналогично акциям)
+                    # Ставки - могут требовать специального处理
+                    
+                    # Запрос свечей с разбивкой на chunks
+                    max_candles_per_request = {
+                        CandleInterval.CANDLE_INTERVAL_5_SEC: 2500,
+                        CandleInterval.CANDLE_INTERVAL_10_SEC: 1250,
+                        CandleInterval.CANDLE_INTERVAL_30_SEC: 2500,
+                        CandleInterval.CANDLE_INTERVAL_1_MIN: 2400,
+                        CandleInterval.CANDLE_INTERVAL_2_MIN: 1200,
+                        CandleInterval.CANDLE_INTERVAL_3_MIN: 750,
+                        CandleInterval.CANDLE_INTERVAL_5_MIN: 2400,
+                        CandleInterval.CANDLE_INTERVAL_10_MIN: 1200,
+                        CandleInterval.CANDLE_INTERVAL_15_MIN: 800,
+                        CandleInterval.CANDLE_INTERVAL_30_MIN: 400,
+                        CandleInterval.CANDLE_INTERVAL_HOUR: 500,
+                        CandleInterval.CANDLE_INTERVAL_2_HOUR: 250,
+                        CandleInterval.CANDLE_INTERVAL_4_HOUR: 125,
+                        CandleInterval.CANDLE_INTERVAL_DAY: 365 * 6,
+                        CandleInterval.CANDLE_INTERVAL_WEEK: 52 * 5,
+                        CandleInterval.CANDLE_INTERVAL_MONTH: 12 * 10,
+                    }
+                    
+                    max_candles = max_candles_per_request.get(interval, 1000)
+                    
+                    all_candles: List[MacroCandle] = []
+                    current_from = from_dt
+                    
+                    while current_from < to_dt:
+                        # Вычисление конца текущего chunk
+                        estimated_candles = int((to_dt - current_from).total_seconds() / 
+                                              self._get_interval_seconds(interval))
+                        chunk_size = min(max_candles, estimated_candles)
+                        
+                        if chunk_size <= 0:
+                            break
+                        
+                        # Вычисление to для этого chunk
+                        chunk_to = current_from + timedelta(seconds=chunk_size * self._get_interval_seconds(interval))
+                        chunk_to = min(chunk_to, to_dt)
+                        
+                        logger.debug(
+                            f"T-Tech Macro: Fetching chunk from {current_from} to {chunk_to} "
+                            f"(~{chunk_size} candles)"
+                        )
+                        
+                        try:
+                            # Попытка получить свечи через GetCandles
+                            request = GetCandlesRequest(
+                                instrument_id=instrument_id,
+                                interval=interval,
+                                from_=current_from,
+                                to=chunk_to
+                            )
+                            
+                            response = await client.market_data.get_candles(request)
+                            
+                            if not response or not hasattr(response, 'candles'):
+                                logger.warning(f"No candles returned for {instrument} chunk")
+                                break
+                            
+                            for candle in response.candles:
+                                # Конвертация в MacroCandle
+                                macro_candle = MacroCandle(
+                                    timestamp=self._timestamp_to_datetime(candle.time),
+                                    open=self._quotation_to_decimal(candle.open),
+                                    high=self._quotation_to_decimal(candle.high),
+                                    low=self._quotation_to_decimal(candle.low),
+                                    close=self._quotation_to_decimal(candle.close),
+                                    volume=Decimal(str(candle.volume)) if hasattr(candle, 'volume') else None,
+                                    source=DataSource.TINKOFF,
+                                    interpolation_method='none',
+                                    shift_periods=1
+                                )
+                                all_candles.append(macro_candle)
+                            
+                            # Переход к следующему chunk
+                            current_from = chunk_to
+                            
+                        except Exception as chunk_error:
+                            logger.error(
+                                f"T-Tech Macro: Error fetching chunk for {instrument}: {chunk_error}. "
+                                f"Stopping pagination."
+                            )
+                            break
+                    
+                    # Сортировка по timestamp
+                    all_candles.sort(key=lambda c: c.timestamp)
+                    
+                    logger.info(
+                        f"T-Tech: Fetched {len(all_candles)} macro candles for {instrument} "
+                        f"{timeframe.value}"
+                    )
+                    
+                    return all_candles
+                    
+            except Exception as e:
+                logger.error(f"T-Tech get_macro failed for {instrument}: {e}")
+                raise
+        
+        try:
+            return await self._execute_with_protection(
+                self._retry_with_backoff(_fetch(), f"get_macro:{instrument}")
+            )
+        except Exception as e:
+            logger.error(f"T-Tech get_macro failed for {instrument}: {e}")
+            raise
+    
+    def _get_interval_seconds(self, interval: Any) -> int:
+        """Получение длительности интервала в секундах."""
+        interval_seconds = {
+            CandleInterval.CANDLE_INTERVAL_5_SEC: 5,
+            CandleInterval.CANDLE_INTERVAL_10_SEC: 10,
+            CandleInterval.CANDLE_INTERVAL_30_SEC: 30,
+            CandleInterval.CANDLE_INTERVAL_1_MIN: 60,
+            CandleInterval.CANDLE_INTERVAL_2_MIN: 120,
+            CandleInterval.CANDLE_INTERVAL_3_MIN: 180,
+            CandleInterval.CANDLE_INTERVAL_5_MIN: 300,
+            CandleInterval.CANDLE_INTERVAL_10_MIN: 600,
+            CandleInterval.CANDLE_INTERVAL_15_MIN: 900,
+            CandleInterval.CANDLE_INTERVAL_30_MIN: 1800,
+            CandleInterval.CANDLE_INTERVAL_HOUR: 3600,
+            CandleInterval.CANDLE_INTERVAL_2_HOUR: 7200,
+            CandleInterval.CANDLE_INTERVAL_4_HOUR: 14400,
+            CandleInterval.CANDLE_INTERVAL_DAY: 86400,
+            CandleInterval.CANDLE_INTERVAL_WEEK: 604800,
+            CandleInterval.CANDLE_INTERVAL_MONTH: 2592000,  # ~30 дней
+        }
+        return interval_seconds.get(interval, 60)
     
     async def get_fundamentals(
         self,
@@ -708,12 +920,12 @@ class TtechProvider(DataProvider):
         Проверка поддержки типа данных.
         
         T-Tech поддерживает:
-        - ohlcv: все тикеры
+        - ohlcv: все тикеры акций
         - lob: все тикеры
         - trades: все тикеры
         - fundamentals: акции
         - events: акции
-        - macro: НЕ поддерживается
+        - macro: валюты, товары, индексы, ставки (см. _supported_macro)
         
         Args:
             data_type: Тип данных.
@@ -722,9 +934,9 @@ class TtechProvider(DataProvider):
         Returns:
             True если поддерживается.
         """
-        unsupported_macro = ['macro']
-        if data_type in unsupported_macro and instrument in ['USD_RUB', 'BRENT', 'CBR_KEY_RATE']:
-            return False
+        # Проверка макро-данных
+        if data_type == 'macro':
+            return instrument in self._supported_macro
         
         supported_types = ['ohlcv', 'lob', 'trades', 'fundamentals', 'events']
         return data_type in supported_types
