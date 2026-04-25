@@ -396,7 +396,8 @@ class DataCollector:
                 provider=provider,
                 storage=self._storage,
                 cache=self._cache,
-                validator=self._validator
+                validator=self._validator,
+                config=self.config
             )
         
         return self._syncs[key]
