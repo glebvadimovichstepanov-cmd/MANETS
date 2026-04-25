@@ -289,11 +289,18 @@ class IncrementalSynchronizer:
     def _get_tf_delta(self, timeframe: Timeframe) -> timedelta:
         """Получение дельты времени для таймфрейма."""
         deltas = {
+            Timeframe.S5: timedelta(seconds=5),
+            Timeframe.S10: timedelta(seconds=10),
+            Timeframe.S30: timedelta(seconds=30),
             Timeframe.M1: timedelta(minutes=1),
+            Timeframe.M2: timedelta(minutes=2),
+            Timeframe.M3: timedelta(minutes=3),
             Timeframe.M5: timedelta(minutes=5),
             Timeframe.M10: timedelta(minutes=10),
             Timeframe.M15: timedelta(minutes=15),
+            Timeframe.M30: timedelta(minutes=30),
             Timeframe.H1: timedelta(hours=1),
+            Timeframe.H2: timedelta(hours=2),
             Timeframe.H4: timedelta(hours=4),
             Timeframe.D1: timedelta(days=1),
             Timeframe.W1: timedelta(weeks=1),
