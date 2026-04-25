@@ -2,13 +2,13 @@
   "instrument": "CNY_RUB",
   "timeframe": "10m",
   "data_type": "macro",
-  "last_timestamp": "2026-04-21T10:30:00",
-  "last_sync_at": "2026-04-25T13:03:12.628637",
+  "last_timestamp": "2026-04-24T18:50:00",
+  "last_sync_at": "2026-04-25T14:35:06.486344",
   "source_chain": [
     "moexalgo"
   ],
   "checksum": null,
   "schema_version": "2.0",
-  "quality_score": 0.9,
+  "quality_score": 1.0,
   "gaps_detected": 0
 }

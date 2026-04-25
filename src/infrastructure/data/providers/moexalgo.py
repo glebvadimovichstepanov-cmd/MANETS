@@ -161,11 +161,11 @@ class MoexAlgoProvider(DataProvider):
             'RTS_INDEX': 'RTSI',     # Индекс РТС
             
             # Ставки
-            'RUONIA': 'RUONIA',
+            'RUONIA': 'SR',          # Фьючерс на RUONIA (SR - Swap Rate)
             'RUSFAR': 'RUSFAR',
             'CBR_KEY_RATE': 'CBR_KEY_RATE',  # Специальный, берется из CBR
             
-            # OFZ облигации (ISIN коды)
+            # OFZ облигации (ISIN коды) - используются напрямую
             'OFZ_26238': 'SU26238RMFS4',
             'OFZ_26244': 'SU26244RMFS2'
         }
@@ -277,13 +277,13 @@ class MoexAlgoProvider(DataProvider):
             moex_code = self._macro_instruments_map[instrument].get('moex_code')
             # Если в конфиге указан базовый код фьючерса (BR, NG, GLD, SLV),
             # нужно определить конкретный контракт
-            if moex_code in ['BR', 'NG', 'GLD', 'SLV'] and from_dt:
+            if moex_code in ['BR', 'NG', 'GLD', 'SLV', 'SR'] and from_dt:
                 return self._get_futures_contract_code(moex_code, from_dt)
             return moex_code
         
         # Fallback на старый маппинг
         base_code = self._macro_ticker_map.get(instrument)
-        if base_code in ['BR', 'NG', 'GLD', 'SLV'] and from_dt:
+        if base_code in ['BR', 'NG', 'GLD', 'SLV', 'SR'] and from_dt:
             return self._get_futures_contract_code(base_code, from_dt)
         return base_code
     
@@ -297,7 +297,7 @@ class MoexAlgoProvider(DataProvider):
         Логика выбора:
         - Для Brent на MOEX: ежемесячная экспирация
         - Контракты: F=Янв, G=Фев, H=Март, J=Апр, K=Май, M=Июн, N=Июл, Q=Авг, U=Сен, V=Окт, X=Ноя, Z=Дек
-        - Экспирация происходит ~20 числа текущего месяца для следующего месяца поставки
+        - Экспирация происходит ~20 числа текущего месяца для СЛЕДУЮЩЕГО месяца поставки
         - Например: BRJ26 (апрель 2026) экспирируется ~20 марта 2026
         - После 20 марта активным становится BRK6 (май 2026)
         - После 20 апреля активным становится BRM6 (июнь 2026)
@@ -323,14 +323,16 @@ class MoexAlgoProvider(DataProvider):
         roll_day = 20
         
         if day >= roll_day:
-            # Уже после дня переключения - берем СЛЕДУЮЩИЙ месяц
-            contract_month = month + 2  # +2 потому что текущий месяц еще не закончился
+            # Уже после дня переключения - берем МЕСЯЦ ПОСЛЕ следующего (через один)
+            # Например: 25 апреля -> после экспирации майского -> нужен июньский (месяц + 2)
+            contract_month = month + 2
             contract_year = year
             if contract_month > 12:
                 contract_month -= 12
                 contract_year += 1
         else:
-            # До дня переключения - берем СЛЕДУЮЩИЙ месяц (поставка в следующем месяце)
+            # До дня переключения - текущий контракт еще активен (следующий месяц)
+            # Например: 15 апреля -> майский контракт еще активен (месяц + 1)
             contract_month = month + 1
             contract_year = year
             if contract_month > 12:
@@ -340,7 +342,7 @@ class MoexAlgoProvider(DataProvider):
         # Получаем буквенный код месяца
         month_letter = self._futures_month_codes.get(contract_month, 'H')
         
-        # Две последние цифры года
+        # Две последние цифры года - используем полный формат (2 цифры)
         year_suffix = str(contract_year)[-2:]
         
         contract_code = f"{base_code}{month_letter}{year_suffix}"
@@ -627,11 +629,12 @@ class MoexAlgoProvider(DataProvider):
                         board = 'INDEX'
                     url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
                 elif is_bond:
-                    # Облигации: используем TQCB (корпоративные) или TQOB (государственные)
+                    # Облигации: используем TQOB (государственные OFZ) или TQCB (корпоративные)
+                    # OFZ облигации торгуются на TQOB (Treasury Bonds)
                     engine = 'stock'
                     market = 'bonds'
                     if not board:
-                        board = 'TQCB'  # По умолчанию корпоративные, но OFZ лучше на TQCB
+                        board = 'TQOB'  # По умолчанию государственные облигации (OFZ)
                     url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
                 else:
                     # Товары - фьючерсы (BRENT, NATURAL_GAS, GOLD, SILVER)
@@ -639,8 +642,8 @@ class MoexAlgoProvider(DataProvider):
                     # Используем URL без board для фьючерсов - MOEX ISS API требует такой формат
                     engine = 'futures'
                     market = 'forts'
+                    # Не добавляем board в URL для фьючерсов
                     url = f"{self.base_url}/engines/{engine}/markets/{market}/securities/{ticker}/candles"
-                url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
             else:
                 # Акции
                 url = f"{self.base_url}/engines/stock/markets/shares/securities/{instrument}/candles"
