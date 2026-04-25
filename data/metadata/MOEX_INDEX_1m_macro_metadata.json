@@ -1,10 +1,10 @@
 {
-  "snapshot_id": "MOEX_INDEX_1M_20260425_130246",
+  "snapshot_id": "MOEX_INDEX_1m_20260425_140343",
   "instrument": "MOEX_INDEX",
-  "timeframe": "1M",
+  "timeframe": "1m",
   "data_type": "macro",
-  "created_at": "2026-04-25T13:02:46.608403",
-  "updated_at": "2026-04-25T13:02:46.608381",
+  "created_at": "2026-04-25T14:03:43.307499",
+  "updated_at": "2026-04-25T14:03:43.307491",
   "checkpoint": null,
   "validation_report": {
     "passed": true,
