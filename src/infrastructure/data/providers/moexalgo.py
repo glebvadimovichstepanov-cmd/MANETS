@@ -233,7 +233,7 @@ class MoexAlgoProvider(DataProvider):
     
     async def _fetch_json(self, url: str, params: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        GET запрос с возвратом JSON.
+        GET запрос с возвратом JSON (MOEX ISS API).
         
         Args:
             url: URL endpoint.
@@ -249,19 +249,100 @@ class MoexAlgoProvider(DataProvider):
             params = {}
         params['json'] = 1
         
-        async with session.get(url, params=params) as response:
-            if response.status == 200:
-                return await response.json()
-            elif response.status == 401:
-                raise RuntimeError(f"Unauthorized: {url}")
-            elif response.status == 403:
-                raise RuntimeError(f"Forbidden: {url}")
-            elif response.status == 404:
-                raise RuntimeError(f"Not found: {url}")
-            elif response.status == 429:
-                raise RuntimeError(f"Rate limited: {url}")
-            else:
-                raise RuntimeError(f"HTTP {response.status}: {url}")
+        try:
+            async with session.get(url, params=params, timeout=self.config.request_timeout) as response:
+                content_type = response.headers.get("Content-Type", "")
+                
+                if response.status == 200:
+                    # MOEX может вернуть XML даже при json=1 в некоторых случаях
+                    if "xml" in content_type:
+                        text = await response.text()
+                        return self._parse_iss_xml(text)
+                    else:
+                        try:
+                            return await response.json()
+                        except aiohttp.ContentTypeError:
+                            # Fallback: пытаемся распарсить текст как JSON
+                            text = await response.text()
+                            import json
+                            return json.loads(text)
+                            
+                elif response.status == 401:
+                    raise RuntimeError(f"Unauthorized: {url}")
+                elif response.status == 403:
+                    raise RuntimeError(f"Forbidden: {url}")
+                elif response.status == 404:
+                    raise RuntimeError(f"Not found: {url}")
+                elif response.status == 429:
+                    raise RuntimeError(f"Rate limited: {url}")
+                else:
+                    raise RuntimeError(f"HTTP {response.status}: {url}")
+                    
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"Timeout fetching {url}")
+    
+    def _parse_iss_xml(self, xml_text: str) -> Dict[str, Any]:
+        """
+        Парсинг XML ответа от MOEX ISS API.
+        
+        Args:
+            xml_text: XML строка.
+            
+        Returns:
+            Словарь с данными в формате, совместимом с JSON-ответом.
+        """
+        import xml.etree.ElementTree as ET
+        
+        try:
+            root = ET.fromstring(xml_text)
+            result = {}
+            
+            # Ищем все блоки <data> с атрибутом name или id
+            for block in root.findall(".//data"):
+                block_name = block.get("name") or block.get("id")
+                if not block_name:
+                    continue
+                
+                columns = []
+                rows = []
+                
+                # Извлекаем названия колонок
+                cols_elem = block.find("columns")
+                if cols_elem is not None:
+                    columns = [c.get("name") for c in cols_elem.findall("column")]
+                
+                # Извлекаем строки данных
+                rows_elem = block.find("rows")
+                if rows_elem is not None:
+                    for row in rows_elem.findall("row"):
+                        row_data = []
+                        cells = row.findall("cell")
+                        for i, cell in enumerate(cells):
+                            val = cell.text
+                            # Попытка конвертации типов
+                            if val is not None and i < len(columns):
+                                try:
+                                    if "." in val:
+                                        row_data.append(float(val))
+                                    else:
+                                        row_data.append(int(val))
+                                except ValueError:
+                                    row_data.append(val)
+                            else:
+                                row_data.append(val)
+                        rows.append(row_data)
+                
+                if columns and rows:
+                    result[block_name] = {"columns": columns, "data": rows}
+            
+            return result
+            
+        except ET.ParseError as e:
+            logger.error(f"MOEX ISS XML parse error: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"MOEX ISS XML error: {e}")
+            return {}
     
     def _parse_moex_datetime(self, dt_str: str) -> datetime:
         """
@@ -323,11 +404,23 @@ class MoexAlgoProvider(DataProvider):
             # Построение URL для ISS API
             if is_macro:
                 # Макро-инструменты (валюты, индексы, товары)
-                engine = 'stock'
-                market = 'currency' if is_currency else ('index' if is_index else 'main')
+                # Валюты используют engine=currency, market=selt
+                # Индексы используют engine=stock, market=index
+                # Товары используют engine=stock, market=main
                 
                 ticker = self._macro_ticker_map.get(instrument, instrument)
-                # Для индексов и валют не указываем board в URL
+                
+                if is_currency:
+                    engine = 'currency'
+                    market = 'selt'
+                elif is_index:
+                    engine = 'stock'
+                    market = 'index'
+                else:
+                    # Товары
+                    engine = 'stock'
+                    market = 'main'
+                
                 url = f"{self.base_url}/engines/{engine}/markets/{market}/securities/{ticker}/candles"
             else:
                 # Акции
@@ -424,14 +517,22 @@ class MoexAlgoProvider(DataProvider):
             
             # Построение URL
             if is_macro:
-                board = 'MAIN'
-                if is_currency:
-                    board = 'CURR'
-                elif is_index:
-                    board = 'INDEX'
-                
                 ticker = self._macro_ticker_map.get(instrument, instrument)
-                url = f"{self.base_url}/engines/stock/markets/{board.lower()}/boards/{board}/securities/{ticker}/orderbook"
+                
+                if is_currency:
+                    engine = 'currency'
+                    market = 'selt'
+                    board = 'ALL'
+                elif is_index:
+                    engine = 'stock'
+                    market = 'index'
+                    board = 'INDEX'
+                else:
+                    engine = 'stock'
+                    market = 'main'
+                    board = 'MAIN'
+                
+                url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/orderbook"
             else:
                 url = f"{self.base_url}/engines/stock/markets/shares/boards/TQBR/securities/{instrument}/orderbook"
             
@@ -524,14 +625,22 @@ class MoexAlgoProvider(DataProvider):
             
             # Построение URL
             if is_macro:
-                board = 'MAIN'
-                if is_currency:
-                    board = 'CURR'
-                elif is_index:
-                    board = 'INDEX'
-                
                 ticker = self._macro_ticker_map.get(instrument, instrument)
-                url = f"{self.base_url}/engines/stock/markets/{board.lower()}/boards/{board}/securities/{ticker}/trades"
+                
+                if is_currency:
+                    engine = 'currency'
+                    market = 'selt'
+                    board = 'ALL'
+                elif is_index:
+                    engine = 'stock'
+                    market = 'index'
+                    board = 'INDEX'
+                else:
+                    engine = 'stock'
+                    market = 'main'
+                    board = 'MAIN'
+                
+                url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/trades"
             else:
                 url = f"{self.base_url}/engines/stock/markets/shares/boards/TQBR/securities/{instrument}/trades"
             
