@@ -230,6 +230,19 @@ class IncrementalSynchronizer:
         # Сортировка всех свечей по timestamp (API может возвращать в обратном порядке)
         all_candles.sort(key=lambda c: c.timestamp)
         
+        # Дедупликация по timestamp (удаляем дубликаты, оставляя первую запись)
+        seen_timestamps = set()
+        unique_candles = []
+        for candle in all_candles:
+            if candle.timestamp not in seen_timestamps:
+                seen_timestamps.add(candle.timestamp)
+                unique_candles.append(candle)
+        
+        if len(unique_candles) < len(all_candles):
+            logger.info(f"Deduplicated: {len(all_candles)} -> {len(unique_candles)} candles (removed {len(all_candles) - len(unique_candles)} duplicates)")
+        
+        all_candles = unique_candles
+        
         # Отладка: проверяем порядок после сортировки
         if all_candles:
             logger.debug(f"After sorting: first={all_candles[0].timestamp}, last={all_candles[-1].timestamp}, total={len(all_candles)}")

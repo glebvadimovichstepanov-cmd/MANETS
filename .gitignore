@@ -1,8 +1,4 @@
 ```
-# Compiled Python files
-*.pyc
 __pycache__/
-
-# Metadata and checkpoint files
-data/metadata/*.json
+*.pyc
 ```
