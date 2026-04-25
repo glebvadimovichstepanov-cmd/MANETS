@@ -296,6 +296,10 @@ class TtechProvider(DataProvider):
             # ISO формат
             return datetime.fromisoformat(ts.replace('Z', '+00:00')).replace(tzinfo=None)
         
+        if isinstance(ts, datetime):
+            # Уже datetime объект, просто убираем timezone info если есть
+            return ts.replace(tzinfo=None)
+        
         # Если тип неизвестен, пробуем получить атрибуты напрямую
         if hasattr(ts, 'to_pydatetime'):
             # pandas Timestamp
