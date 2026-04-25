@@ -1,37 +1,8 @@
-```
-# Python compiled files
-*.pyc
-__pycache__/
-
-# Data storage and metadata (generated files)
-data/storage/
-data/metadata/
-
-# Environment files
-.env
-.env.local
-*.env.*
-
-# Logs
-*.log
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Cache directories
-.mypy_cache/
-.pytest_cache/
+```yaml
+# Configuration file for data collector
+api_key: "your_api_key_here"
+endpoint: "https://api.example.com/data"
+timeout: 30
+retry_attempts: 3
+debug: false
 ```
