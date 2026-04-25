@@ -160,17 +160,34 @@ async def main():
             
         if args.timeframes:
             tf_map = {
-                '5s': Timeframe.M1, '10s': Timeframe.M1, '30s': Timeframe.M1,
-                'M1': Timeframe.M1, 'M2': Timeframe.M1, 'M3': Timeframe.M1,
-                'M5': Timeframe.M5, 'M10': Timeframe.M10,
-                'M15': Timeframe.M15, 'M30': Timeframe.M30,
-                'H1': Timeframe.H1, 'H2': Timeframe.H1,
-                'H4': Timeframe.H4, 
-                'D1': Timeframe.D1, 'W1': Timeframe.W1, 'MN': Timeframe.MN
+                '5S': Timeframe.M1, '10S': Timeframe.M1, '30S': Timeframe.M1,
+                '1M': Timeframe.M1, 'M1': Timeframe.M1, 
+                '2M': Timeframe.M1, 'M2': Timeframe.M1,
+                '3M': Timeframe.M1, 'M3': Timeframe.M1,
+                '5M': Timeframe.M5, 'M5': Timeframe.M5,
+                '10M': Timeframe.M10, 'M10': Timeframe.M10,
+                '15M': Timeframe.M15, 'M15': Timeframe.M15,
+                '30M': Timeframe.M30, 'M30': Timeframe.M30,
+                '1H': Timeframe.H1, 'H1': Timeframe.H1,
+                '2H': Timeframe.H1, 'H2': Timeframe.H1,
+                '4H': Timeframe.H4, 'H4': Timeframe.H4,
+                '1D': Timeframe.D1, 'D1': Timeframe.D1,
+                '1W': Timeframe.W1, 'W1': Timeframe.W1,
+                '1MN': Timeframe.MN, 'MN': Timeframe.MN
             }
             timeframes = []
             for tf in args.timeframes.split(','):
                 tf_clean = tf.strip().upper()
+                # Нормализация форматов: 4h -> 4H, 4H -> 4H
+                if tf_clean.endswith('H') and len(tf_clean) > 1 and tf_clean[:-1].isdigit():
+                    tf_clean = 'H' + tf_clean[:-1]  # 4H -> H4
+                elif tf_clean.endswith('M') and len(tf_clean) > 1 and tf_clean[:-1].isdigit():
+                    tf_clean = 'M' + tf_clean[:-1]  # 10M -> M10
+                elif tf_clean.endswith('D') and len(tf_clean) > 1 and tf_clean[:-1].isdigit():
+                    tf_clean = 'D' + tf_clean[:-1]  # 1D -> D1
+                elif tf_clean.endswith('W') and len(tf_clean) > 1 and tf_clean[:-1].isdigit():
+                    tf_clean = 'W' + tf_clean[:-1]  # 1W -> W1
+                
                 if tf_clean in tf_map:
                     timeframes.append(tf_map[tf_clean])
                 else:
