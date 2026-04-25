@@ -1,28 +1,53 @@
 ```
-# Python
-__pycache__/
+# Compiled and build artifacts
 *.pyc
-*.pyo
-*.pyd
+__pycache__/
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.class
+*.out
 
 # Dependencies
 .venv/
 venv/
-env/
+node_modules/
+pip-log.txt
+pipenv.lock
+poetry.lock
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Environment variables
 .env
 .env.local
 .env.*
 
-# Build artifacts
-dist/
-build/
-*.egg-info/
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
+# Editors
+.vscode/
+.idea/
 *.swp
-*~
+*.swo
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Build systems
+build/
+dist/
+*.egg-info/
+target/
+.gradle/
+
+# OS generated files
+.DS_Store
+Thumbs.db
 ```
