@@ -129,6 +129,16 @@ class IncrementalSynchronizer:
         
         to_dt = datetime.now(timezone.utc)
         
+        # Ограничение глубины для внутридневных таймфреймов (5 лет)
+        if timeframe in [Timeframe.S5, Timeframe.S10, Timeframe.S30,
+                         Timeframe.M1, Timeframe.M2, Timeframe.M3, Timeframe.M5,
+                         Timeframe.M10, Timeframe.M15, Timeframe.M30,
+                         Timeframe.H1, Timeframe.H2, Timeframe.H4]:
+            max_history = datetime.now(timezone.utc) - timedelta(days=5*365)
+            if from_dt < max_history:
+                from_dt = max_history
+                logger.info(f"Intraday TF detected. Limiting history to 5 years from {from_dt}")
+        
         # Проверка необходимости загрузки
         if to_dt - from_dt < self._get_tf_delta(timeframe):
             logger.info("No new data needed (within one bar)")
