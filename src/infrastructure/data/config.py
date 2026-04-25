@@ -122,11 +122,17 @@ class InstrumentsConfig(BaseModel):
     """Конфигурация инструментов."""
     tickers: List[str] = Field(default_factory=list)
     
+    class MacroInstrument(BaseModel):
+        """Макро-инструмент с FIGI и кодом MOEX."""
+        ticker: str
+        figi: Optional[str] = None
+        moex_code: Optional[str] = None
+    
     class MacroConfig(BaseModel):
-        currencies: List[str] = Field(default_factory=list)
-        commodities: List[str] = Field(default_factory=list)
-        indices: List[str] = Field(default_factory=list)
-        rates: List[str] = Field(default_factory=list)
+        currencies: List[InstrumentsConfig.MacroInstrument] = Field(default_factory=list)
+        commodities: List[InstrumentsConfig.MacroInstrument] = Field(default_factory=list)
+        indices: List[InstrumentsConfig.MacroInstrument] = Field(default_factory=list)
+        rates: List[InstrumentsConfig.MacroInstrument] = Field(default_factory=list)
     
     macro: MacroConfig = Field(default_factory=MacroConfig)
 

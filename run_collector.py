@@ -312,14 +312,20 @@ async def main():
             
             # Сбор макро-данных
             if "macro" in data_types:
-                macro_instruments = config.instruments.macro.currencies + \
-                                   config.instruments.macro.commodities + \
-                                   config.instruments.macro.indices + \
-                                   config.instruments.macro.rates
+                # Получаем список макро-инструментов (теперь это объекты MacroInstrument)
+                macro_instruments = (
+                    config.instruments.macro.currencies +
+                    config.instruments.macro.commodities +
+                    config.instruments.macro.indices +
+                    config.instruments.macro.rates
+                )
                 
-                logger.info(f"Сбор макро-данных: {macro_instruments}")
+                logger.info(f"Сбор макро-данных: {[inst.ticker for inst in macro_instruments]}")
                 
-                for macro_inst in macro_instruments:
+                for macro_inst_obj in macro_instruments:
+                    # Извлекаем ticker из объекта MacroInstrument
+                    macro_inst = macro_inst_obj.ticker
+                    
                     for timeframe in timeframes:
                         try:
                             logger.info(f"Сбор макро: {macro_inst} [{timeframe.value}]")
@@ -328,7 +334,7 @@ async def main():
                             if incremental:
                                 from src.infrastructure.data.sync.incremental import IncrementalSynchronizer
                                 
-                                # Получаем провайдер для макро-данных (MoexAlgo для большинства инструментов)
+                                # Получаем провайдер для макро-данных
                                 macro_provider = collector.get_provider_for("macro", macro_inst)
                                 if not macro_provider:
                                     logger.warning(f"  ⚠ Нет доступного провайдера для {macro_inst}")
@@ -358,7 +364,7 @@ async def main():
                                 else:
                                     logger.warning(f"  ⚠ Статус: {result['status']}")
                             else:
-                                # Полная загрузка - используем роутер для выбора провайдера
+                                # Полная загрузка
                                 macro_provider = collector.get_provider_for("macro", macro_inst)
                                 if not macro_provider:
                                     logger.warning(f"  ⚠ Нет доступного провайдера для {macro_inst}")

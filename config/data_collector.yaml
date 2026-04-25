@@ -90,20 +90,42 @@ instruments:
     - YDEX
   macro:
     currencies:
-      - USD_RUB
-      - EUR_RUB
-      - CNY_RUB
+      - ticker: USD_RUB
+        figi: USD000UTSTOM
+        moex_code: USDRUB_TOM
+      - ticker: EUR_RUB
+        figi: EUR000UTSTOM
+        moex_code: EURRUB_TOM
+      - ticker: CNY_RUB
+        figi: CNY000UTSTOM
+        moex_code: CNYRUB_TOM
     commodities:
-      - BRENT
-      - NATURAL_GAS
+      - ticker: BRENT
+        figi: BBG00X3NNN89
+        moex_code: BR
+      - ticker: NATURAL_GAS
+        figi: BBG00BVPV426
+        moex_code: NG
     indices:
-      - MOEX_INDEX
-      - RTS_INDEX
+      - ticker: MOEX_INDEX
+        figi: MXBD
+        moex_code: IMOEX
+      - ticker: RTS_INDEX
+        figi: RTSD
+        moex_code: RTSI
     rates:
-      - CBR_KEY_RATE
-      - OFZ_26238
-      - OFZ_26244
-      - RUONIA
+      - ticker: CBR_KEY_RATE
+        figi: null
+        moex_code: null
+      - ticker: OFZ_26238
+        figi: SU26238RMFS4
+        moex_code: SU26238RMFS4
+      - ticker: OFZ_26244
+        figi: SU26244RMFS2
+        moex_code: SU26244RMFS2
+      - ticker: RUONIA
+        figi: null
+        moex_code: RUONIA
 
 # Настройки кэширования (Memcached)
 cache:

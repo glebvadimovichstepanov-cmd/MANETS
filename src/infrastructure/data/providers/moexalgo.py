@@ -120,7 +120,8 @@ class MoexAlgoProvider(DataProvider):
             'OFZ_26238', 'OFZ_26244'
         }
         
-        # Маппинг тикеров для API запросов
+        # Маппинг тикеров для API запросов (теперь используется moex_code из конфига)
+        # Этот маппинг остаётся как fallback для инструментов, не указанных в конфиге
         self._macro_ticker_map = {
             # Валютные пары (коды инструментов MOEX)
             'USD_RUB': 'USDRUB_TOM',
@@ -145,6 +146,30 @@ class MoexAlgoProvider(DataProvider):
             'CBR_KEY_RATE': 'CBR_KEY_RATE',  # Специальный, берется из CBR
             
             # OFZ облигации (ISIN коды)
+            'OFZ_26238': 'SU26238RMFS4',
+            'OFZ_26244': 'SU26244RMFS2'
+        }
+        
+        # Маппинг FIGI для T-Tech и других провайдеров
+        self._figi_map = {
+            # Валюты
+            'USD_RUB': 'USD000UTSTOM',
+            'EUR_RUB': 'EUR000UTSTOM',
+            'CNY_RUB': 'CNY000UTSTOM',
+            'GBP_RUB': 'GBP000UTSTOM',
+            'KZT_RUB': 'KZT000UTSTOM',
+            
+            # Товары - фьючерсы
+            'BRENT': 'BBG00X3NNN89',
+            'NATURAL_GAS': 'BBG00BVPV426',
+            'GOLD': 'BBG00QJJPJ35',
+            'SILVER': 'BBG001W7Q2H3',
+            
+            # Индексы
+            'MOEX_INDEX': 'MXBD',
+            'RTS_INDEX': 'RTSD',
+            
+            # OFZ облигации (ISIN коды = FIGI для облигаций)
             'OFZ_26238': 'SU26238RMFS4',
             'OFZ_26244': 'SU26244RMFS2'
         }
@@ -180,6 +205,30 @@ class MoexAlgoProvider(DataProvider):
             Timeframe.W1: 'W',       # Неделя
             Timeframe.MN: 'M',       # Месяц
         }
+    
+    def get_figi(self, instrument: str) -> Optional[str]:
+        """
+        Получение FIGI для инструмента.
+        
+        Args:
+            instrument: Тикер инструмента.
+            
+        Returns:
+            FIGI или None если не найден.
+        """
+        return self._figi_map.get(instrument)
+    
+    def get_moex_code(self, instrument: str) -> Optional[str]:
+        """
+        Получение кода инструмента MOEX.
+        
+        Args:
+            instrument: Тикер инструмента.
+            
+        Returns:
+            Код MOEX или None если не найден.
+        """
+        return self._macro_ticker_map.get(instrument)
     
     async def _get_session(self) -> aiohttp.ClientSession:
         """Ленивая инициализация HTTP сессии."""
@@ -425,7 +474,8 @@ class MoexAlgoProvider(DataProvider):
                 # Индексы используют engine=stock, market=index
                 # Товары используют engine=stock, market=main
                 
-                ticker = self._macro_ticker_map.get(instrument, instrument)
+                # Используем moex_code из конфига через get_moex_code, fallback на старый маппинг
+                ticker = self.get_moex_code(instrument) or self._macro_ticker_map.get(instrument, instrument)
                 
                 if is_currency:
                     engine = 'currency'
