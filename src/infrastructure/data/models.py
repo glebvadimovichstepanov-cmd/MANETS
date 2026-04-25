@@ -470,3 +470,4 @@ class ProviderConfig(BaseModel):
     auth_token_env: Optional[str] = None
     quality_score_override: Optional[float] = None
     warning_on_use: bool = False
+    request_timeout_sec: float = Field(default=30.0, gt=0)

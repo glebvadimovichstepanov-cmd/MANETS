@@ -72,6 +72,7 @@ class MoexAlgoProvider(DataProvider):
         
         self.config = config  # Сохраняем конфигурацию
         self.endpoints = config.get('endpoints', {})
+        self.request_timeout = config.get('request_timeout', 30.0)  # Timeout для запросов
         # MOEX API доступен только через публичный ISS API (apim.moex.com требует авторизации)
         self.base_url = 'https://iss.moex.com/iss'
         
@@ -251,7 +252,7 @@ class MoexAlgoProvider(DataProvider):
         params['json'] = 1
         
         try:
-            async with session.get(url, params=params, timeout=self.config.request_timeout) as response:
+            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=self.request_timeout)) as response:
                 content_type = response.headers.get("Content-Type", "")
                 
                 if response.status == 200:
