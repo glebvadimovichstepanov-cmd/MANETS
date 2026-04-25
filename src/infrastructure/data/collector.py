@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Union
 
 from .models import (
@@ -263,9 +263,13 @@ class DataCollector:
                     raise RuntimeError(f"No available provider for {data_type}:{instrument}")
                 
                 if from_dt is None:
-                    from_dt = datetime(2000, 1, 1, tzinfo=timezone.utc)
+                    # Вычисляем глубину сбора на основе таймфрейма из конфига
+                    depth_years = self.config.history_depth.get_depth_for_timeframe(timeframe.value)
+                    from_dt = datetime.now(timezone.utc) - timedelta(days=depth_years * 365)
+                    logger.info(f"Using history depth of {depth_years} years for {instrument} {timeframe.value}")
+                
                 if to_dt is None:
-                    to_dt = datetime.utcnow().replace(tzinfo=timezone.utc)
+                    to_dt = datetime.now(timezone.utc)
                 
                 candles = await provider.get_ohlcv(instrument, timeframe, from_dt, to_dt)
                 
