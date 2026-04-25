@@ -109,27 +109,56 @@ class DataCollector:
         # T-Tech (primary)
         if 'primary' in prov_configs:
             cfg = prov_configs['primary']
-            providers.append(TtechProvider(
-                config={
-                    'priority': cfg.priority,
-                    'endpoints': cfg.endpoints,
-                    'auth_token_env': cfg.auth_token_env
-                },
-                rate_limit_config=cfg.rate_limit.model_dump() if cfg.rate_limit else None,
-                circuit_breaker_config=cfg.circuit_breaker.model_dump() if cfg.circuit_breaker else None
-            ))
+            try:
+                logger.info(f"Initializing T-Tech provider with config: priority={cfg.priority}, endpoints={cfg.endpoints}")
+                logger.debug(f"Auth token env var: {cfg.auth_token_env}")
+                
+                # Проверка наличия токена
+                import os
+                token = os.environ.get(cfg.auth_token_env, '')
+                if not token:
+                    logger.error(f"INVEST_TOKEN is empty or not set. T-Tech provider will not be initialized.")
+                else:
+                    logger.info(f"INVEST_TOKEN found (length={len(token)}), starts with: {token[:5]}...")
+                
+                provider_instance = TtechProvider(
+                    config={
+                        'priority': cfg.priority,
+                        'endpoints': cfg.endpoints,
+                        'auth_token_env': cfg.auth_token_env
+                    },
+                    rate_limit_config=cfg.rate_limit.model_dump() if cfg.rate_limit else None,
+                    circuit_breaker_config=cfg.circuit_breaker.model_dump() if cfg.circuit_breaker else None
+                )
+                providers.append(provider_instance)
+                logger.info("T-Tech provider initialized successfully")
+            except ImportError as ie:
+                logger.error(f"Failed to import T-Tech dependencies: {ie}. Please install t-tech-investments package.", exc_info=True)
+            except Exception as e:
+                logger.error(f"Failed to initialize T-Tech provider: {e}", exc_info=True)
         
         # Stub (fallback - всегда включен)
         if 'fallback' in prov_configs:
             cfg = prov_configs['fallback']
-            providers.append(StubProvider(
-                config={
-                    'priority': cfg.priority,
-                    'quality_score_override': cfg.quality_score_override,
-                    'warning_on_use': cfg.warning_on_use
-                },
-                rate_limit_config={'requests_per_second': 100.0, 'burst_size': 200}
-            ))
+            try:
+                logger.info("Initializing Stub provider as fallback")
+                provider_instance = StubProvider(
+                    config={
+                        'priority': cfg.priority,
+                        'quality_score_override': cfg.quality_score_override,
+                        'warning_on_use': cfg.warning_on_use
+                    },
+                    rate_limit_config={'requests_per_second': 100.0, 'burst_size': 200}
+                )
+                providers.append(provider_instance)
+                logger.info("Stub provider initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Stub provider: {e}", exc_info=True)
+        
+        if not providers:
+            logger.critical("No providers were initialized! Data collection will fail.")
+        elif len(providers) == 1 and isinstance(providers[0], StubProvider):
+            logger.warning("Only Stub provider is available. Real data will not be fetched.")
         
         return providers
     
