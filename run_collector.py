@@ -328,8 +328,14 @@ async def main():
                             if incremental:
                                 from src.infrastructure.data.sync.incremental import IncrementalSynchronizer
                                 
+                                # Получаем провайдер для макро-данных (MoexAlgo для большинства инструментов)
+                                macro_provider = collector.get_provider_for("macro", macro_inst)
+                                if not macro_provider:
+                                    logger.warning(f"  ⚠ Нет доступного провайдера для {macro_inst}")
+                                    continue
+                                
                                 synchronizer = IncrementalSynchronizer(
-                                    provider=collector.primary_provider,
+                                    provider=macro_provider,
                                     storage=collector.storage,
                                     cache=collector.cache,
                                     validator=collector.validator
@@ -352,8 +358,13 @@ async def main():
                                 else:
                                     logger.warning(f"  ⚠ Статус: {result['status']}")
                             else:
-                                # Полная загрузка
-                                macro_candles = await collector.primary_provider.get_macro(
+                                # Полная загрузка - используем роутер для выбора провайдера
+                                macro_provider = collector.get_provider_for("macro", macro_inst)
+                                if not macro_provider:
+                                    logger.warning(f"  ⚠ Нет доступного провайдера для {macro_inst}")
+                                    continue
+                                    
+                                macro_candles = await macro_provider.get_macro(
                                     instrument=macro_inst,
                                     timeframe=timeframe,
                                     from_dt=None,
