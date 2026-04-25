@@ -244,6 +244,11 @@ class MoexAlgoProvider(DataProvider):
         """
         session = await self._get_session()
         
+        # Добавляем json=1 для получения JSON вместо XML (MOEX ISS API)
+        if params is None:
+            params = {}
+        params['json'] = 1
+        
         async with session.get(url, params=params) as response:
             if response.status == 200:
                 return await response.json()
