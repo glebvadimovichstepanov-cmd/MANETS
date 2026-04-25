@@ -1001,7 +1001,7 @@ class TtechProvider(DataProvider):
                                     low=self._quotation_to_decimal(candle.low),
                                     close=self._quotation_to_decimal(candle.close),
                                     volume=Decimal(str(candle.volume)) if hasattr(candle, 'volume') else None,
-                                    source=DataSource.TINKOFF,
+                                    source=DataSource.TTECH,
                                     interpolation_method='none',
                                     shift_periods=1
                                 )
