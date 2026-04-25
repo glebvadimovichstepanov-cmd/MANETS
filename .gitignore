@@ -1,1 +1,4 @@
-Nothing to output - the added file 'run_collector.py' is a source code file and should not be ignored. The change list contains only a Python source file, which falls under the category of files that should not be ignored according to rule 6 and 7.
+```
+__pycache__/
+*.pyc
+```
