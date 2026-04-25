@@ -89,7 +89,7 @@ class Candle(BaseModel):
     low: Decimal = Field(..., description="Минимальная цена", ge=0)
     close: Decimal = Field(..., description="Цена закрытия", ge=0)
     volume: Decimal = Field(..., description="Объём торгов", ge=0)
-    adj_close: Decimal = Field(..., description="Скорректированная цена закрытия", ge=0)
+    adj_close: Optional[Decimal] = Field(default=None, description="Скорректированная цена закрытия", ge=0)
     adj_factor: Decimal = Field(default=Decimal("1.0"), description="Коэффициент корректировки", ge=1.0)
     is_complete: bool = Field(default=True, description="Флаг завершённости бара")
     source: DataSource = Field(default=DataSource.TTECH, description="Источник данных")

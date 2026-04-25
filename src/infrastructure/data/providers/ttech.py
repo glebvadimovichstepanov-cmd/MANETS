@@ -34,19 +34,62 @@ from .base import DataProvider, ProviderState
 
 logger = logging.getLogger(__name__)
 
-# Проверка доступности библиотеки tinkoff.invest при загрузке модуля
+# Проверка доступности библиотеки t_tech.invest при загрузке модуля
 try:
-    from tinkoff.invest import AioClient, CandleInterval, GetCandlesRequest
-    from tinkoff.invest.services import InstrumentsService, MarketDataService
+    from t_tech.invest import AsyncClient, CandleInterval, GetCandlesRequest, InstrumentIdType
+    from t_tech.invest.services import InstrumentsService, MarketDataService
     TTECH_LIBRARY_AVAILABLE = True
-    logger.debug("tinkoff.invest library loaded successfully")
+    logger.debug("t_tech.invest library loaded successfully")
 except ImportError as e:
     TTECH_LIBRARY_AVAILABLE = False
     logger.warning(
-        f"tinkoff.invest library not available: {e}. "
+        f"t_tech.invest library not available: {e}. "
         "TtechProvider will return empty data. "
-        "Install with: pip install tinkoff-investments (on Windows with your token)"
+        "Install with: pip install t-tech-investments --index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple"
     )
+    # Заглушки для отсутствия библиотеки
+    class AsyncClient:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+        @property
+        def instruments(self):
+            return None
+        @property
+        def market_data(self):
+            return None
+    
+    class CandleInterval:  # type: ignore
+        CANDLE_INTERVAL_5_SEC = "5s"
+        CANDLE_INTERVAL_10_SEC = "10s"
+        CANDLE_INTERVAL_30_SEC = "30s"
+        CANDLE_INTERVAL_1_MIN = "1m"
+        CANDLE_INTERVAL_2_MIN = "2m"
+        CANDLE_INTERVAL_3_MIN = "3m"
+        CANDLE_INTERVAL_5_MIN = "5m"
+        CANDLE_INTERVAL_10_MIN = "10m"
+        CANDLE_INTERVAL_15_MIN = "15m"
+        CANDLE_INTERVAL_30_MIN = "30m"
+        CANDLE_INTERVAL_HOUR = "1h"
+        CANDLE_INTERVAL_2_HOUR = "2h"
+        CANDLE_INTERVAL_4_HOUR = "4h"
+        CANDLE_INTERVAL_DAY = "1d"
+        CANDLE_INTERVAL_WEEK = "1w"
+        CANDLE_INTERVAL_MONTH = "1M"
+    
+    class InstrumentIdType:  # type: ignore
+        INSTRUMENT_ID_TYPE_TICKER = "ticker"
+        INSTRUMENT_ID_TYPE_FIGI = "figi"
+        INSTRUMENT_ID_TYPE_UID = "uid"
+    
+    class InstrumentsService:  # type: ignore
+        pass
+    
+    class MarketDataService:  # type: ignore
+        pass
 
 
 class TtechProvider(DataProvider):
@@ -260,14 +303,20 @@ class TtechProvider(DataProvider):
                 return []
             
             try:
-                # Маппинг таймфреймов
+                # Маппинг таймфреймов на CandleInterval с поддержкой всех интервалов T-Tech API
                 timeframe_map = {
+                    '5s': CandleInterval.CANDLE_INTERVAL_5_SEC,
+                    '10s': CandleInterval.CANDLE_INTERVAL_10_SEC,
+                    '30s': CandleInterval.CANDLE_INTERVAL_30_SEC,
                     '1m': CandleInterval.CANDLE_INTERVAL_1_MIN,
+                    '2m': CandleInterval.CANDLE_INTERVAL_2_MIN,
+                    '3m': CandleInterval.CANDLE_INTERVAL_3_MIN,
                     '5m': CandleInterval.CANDLE_INTERVAL_5_MIN,
                     '10m': CandleInterval.CANDLE_INTERVAL_10_MIN,
                     '15m': CandleInterval.CANDLE_INTERVAL_15_MIN,
                     '30m': CandleInterval.CANDLE_INTERVAL_30_MIN,
                     '1h': CandleInterval.CANDLE_INTERVAL_HOUR,
+                    '2h': CandleInterval.CANDLE_INTERVAL_2_HOUR,
                     '4h': CandleInterval.CANDLE_INTERVAL_4_HOUR,
                     '1d': CandleInterval.CANDLE_INTERVAL_DAY,
                     '1w': CandleInterval.CANDLE_INTERVAL_WEEK,
@@ -279,56 +328,146 @@ class TtechProvider(DataProvider):
                     logger.warning(f"Unsupported timeframe: {timeframe.value}")
                     return []
                 
-                # Получаем FIGI для тикера
-                async with AioClient(token=self.token) as client:
-                    instruments: InstrumentsService = client.instruments
+                # Ограничение периода запроса согласно лимитам Tinkoff API
+                # Максимальные периоды для разных интервалов (в днях)
+                max_periods_days = {
+                    CandleInterval.CANDLE_INTERVAL_5_SEC: 200 / (24 * 60),  # 200 минут
+                    CandleInterval.CANDLE_INTERVAL_10_SEC: 200 / (24 * 60),  # 200 минут
+                    CandleInterval.CANDLE_INTERVAL_30_SEC: 20 / 24,  # 20 часов
+                    CandleInterval.CANDLE_INTERVAL_1_MIN: 1,  # 1 день
+                    CandleInterval.CANDLE_INTERVAL_2_MIN: 1,  # 1 день
+                    CandleInterval.CANDLE_INTERVAL_3_MIN: 1,  # 1 день
+                    CandleInterval.CANDLE_INTERVAL_5_MIN: 7,  # 1 неделя
+                    CandleInterval.CANDLE_INTERVAL_10_MIN: 7,  # 1 неделя
+                    CandleInterval.CANDLE_INTERVAL_15_MIN: 21,  # 3 недели
+                    CandleInterval.CANDLE_INTERVAL_30_MIN: 21,  # 3 недели
+                    CandleInterval.CANDLE_INTERVAL_HOUR: 90,  # 3 месяца
+                    CandleInterval.CANDLE_INTERVAL_2_HOUR: 90,  # 3 месяца
+                    CandleInterval.CANDLE_INTERVAL_4_HOUR: 90,  # 3 месяца
+                    CandleInterval.CANDLE_INTERVAL_DAY: 365 * 6,  # 6 лет
+                    CandleInterval.CANDLE_INTERVAL_WEEK: 365 * 5,  # 5 лет
+                    CandleInterval.CANDLE_INTERVAL_MONTH: 365 * 10,  # 10 лет
+                }
+                max_days = max_periods_days.get(interval, 30)
+                total_days = (to_dt - from_dt).days
+                
+                # Получаем FIGI или UID для тикера
+                async with AsyncClient(token=self.token) as client:
+                    instruments = client.instruments
                     
                     # Поиск инструмента по тикуру
-                    figi = None
+                    instrument_id = None
                     try:
-                        # Пробуем найти по тикуру через share_by (новый API)
-                        response = await client.instruments.share_by(ticker=instrument)
-                        figi = response.instrument.figi
-                        logger.debug(f"T-Tech: Found FIGI {figi} for ticker {instrument}")
+                        # Используем share_by с правильными параметрами (новый API t-tech-investments)
+                        # id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER, class_code='TQBR', id=ticker
+                        response = await client.instruments.share_by(
+                            id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+                            class_code='TQBR',
+                            id=instrument
+                        )
+                        # Предпочитаем instrument_id (UID), fallback на figi
+                        instrument_id = response.instrument.uid or response.instrument.figi
+                        logger.debug(f"T-Tech: Found instrument_id={instrument_id} (FIGI={response.instrument.figi}) for ticker {instrument}")
                     except Exception as e:
                         logger.warning(
                             f"Could not find share by ticker '{instrument}': {e}. "
-                            f"Trying to use as FIGI directly."
+                            f"Trying to use as FIGI/UID directly."
                         )
-                        # Если не нашли, возможно это уже FIGI
-                        figi = instrument
+                        # Пытаемся использовать как FIGI или UID напрямую
+                        instrument_id = instrument
                     
-                    if not figi:
-                        logger.error(f"Could not find FIGI for ticker: {instrument}")
+                    if not instrument_id:
+                        logger.error(f"Could not find instrument ID for ticker: {instrument}")
                         return []
                     
-                    logger.debug(f"T-Tech: Using FIGI {figi} for {instrument}")
+                    logger.debug(f"T-Tech: Using instrument_id={instrument_id} for {instrument}")
                     
-                    # Запрос свечей
-                    candles_response = await client.market_data.get_candles(
-                        figi=figi,
-                        interval=interval,
-                        from_=from_dt,
-                        to=to_dt
-                    )
+                    # Запрос свечей с разбивкой на chunks если период превышает лимит
+                    # T-Tech API имеет лимиты на количество свечей в одном запросе
+                    max_candles_per_request = {
+                        CandleInterval.CANDLE_INTERVAL_5_SEC: 2500,
+                        CandleInterval.CANDLE_INTERVAL_10_SEC: 1250,
+                        CandleInterval.CANDLE_INTERVAL_30_SEC: 2500,
+                        CandleInterval.CANDLE_INTERVAL_1_MIN: 2400,
+                        CandleInterval.CANDLE_INTERVAL_2_MIN: 1200,
+                        CandleInterval.CANDLE_INTERVAL_3_MIN: 750,
+                        CandleInterval.CANDLE_INTERVAL_5_MIN: 2400,
+                        CandleInterval.CANDLE_INTERVAL_10_MIN: 1200,
+                        CandleInterval.CANDLE_INTERVAL_15_MIN: 2400,
+                        CandleInterval.CANDLE_INTERVAL_30_MIN: 1200,
+                        CandleInterval.CANDLE_INTERVAL_HOUR: 2400,
+                        CandleInterval.CANDLE_INTERVAL_2_HOUR: 2400,
+                        CandleInterval.CANDLE_INTERVAL_4_HOUR: 700,
+                        CandleInterval.CANDLE_INTERVAL_DAY: 2400,
+                        CandleInterval.CANDLE_INTERVAL_WEEK: 300,
+                        CandleInterval.CANDLE_INTERVAL_MONTH: 120,
+                    }
                     
-                    # Конвертация в наши модели
-                    candles = []
-                    for candle in candles_response.candles:
-                        candles.append(Candle(
-                            timestamp=self._timestamp_to_datetime(candle.time),
-                            open=self._quotation_to_decimal(candle.open),
-                            high=self._quotation_to_decimal(candle.high),
-                            low=self._quotation_to_decimal(candle.low),
-                            close=self._quotation_to_decimal(candle.close),
-                            volume=Decimal(str(candle.volume)),
-                            adj_close=None,  # T-Tech не предоставляет adjusted close
-                            timeframe=timeframe,
-                            source=DataSource.TTECH
-                        ))
+                    all_candles = []
+                    limit = max_candles_per_request.get(interval, 1000)
                     
-                    logger.info(f"T-Tech: Retrieved {len(candles)} candles for {instrument}")
-                    return candles
+                    # Вычисляем необходимый chunk_size в зависимости от таймфрейма
+                    # и максимального количества свечей
+                    chunk_delta = {
+                        CandleInterval.CANDLE_INTERVAL_5_SEC: timedelta(seconds=5 * limit),
+                        CandleInterval.CANDLE_INTERVAL_10_SEC: timedelta(seconds=10 * limit),
+                        CandleInterval.CANDLE_INTERVAL_30_SEC: timedelta(seconds=30 * limit),
+                        CandleInterval.CANDLE_INTERVAL_1_MIN: timedelta(minutes=limit),
+                        CandleInterval.CANDLE_INTERVAL_2_MIN: timedelta(minutes=2 * limit),
+                        CandleInterval.CANDLE_INTERVAL_3_MIN: timedelta(minutes=3 * limit),
+                        CandleInterval.CANDLE_INTERVAL_5_MIN: timedelta(minutes=5 * limit),
+                        CandleInterval.CANDLE_INTERVAL_10_MIN: timedelta(minutes=10 * limit),
+                        CandleInterval.CANDLE_INTERVAL_15_MIN: timedelta(minutes=15 * limit),
+                        CandleInterval.CANDLE_INTERVAL_30_MIN: timedelta(minutes=30 * limit),
+                        CandleInterval.CANDLE_INTERVAL_HOUR: timedelta(hours=limit),
+                        CandleInterval.CANDLE_INTERVAL_2_HOUR: timedelta(hours=2 * limit),
+                        CandleInterval.CANDLE_INTERVAL_4_HOUR: timedelta(hours=4 * limit),
+                        CandleInterval.CANDLE_INTERVAL_DAY: timedelta(days=limit),
+                        CandleInterval.CANDLE_INTERVAL_WEEK: timedelta(weeks=limit),
+                        CandleInterval.CANDLE_INTERVAL_MONTH: timedelta(days=30 * limit),
+                    }
+                    
+                    current_from = from_dt
+                    chunk_num = 0
+                    
+                    while current_from < to_dt:
+                        chunk_to = min(current_from + chunk_delta.get(interval, timedelta(days=365)), to_dt)
+                        chunk_num += 1
+                        
+                        logger.debug(
+                            f"T-Tech: Fetching chunk {chunk_num} for {instrument} "
+                            f"from {current_from} to {chunk_to} (limit={limit})"
+                        )
+                        
+                        candles_response = await client.market_data.get_candles(
+                            instrument_id=instrument_id,
+                            interval=interval,
+                            from_=current_from,
+                            to=chunk_to,
+                            limit=limit,
+                        )
+                        
+                        for candle in candles_response.candles:
+                            all_candles.append(Candle(
+                                timestamp=self._timestamp_to_datetime(candle.time),
+                                open=self._quotation_to_decimal(candle.open),
+                                high=self._quotation_to_decimal(candle.high),
+                                low=self._quotation_to_decimal(candle.low),
+                                close=self._quotation_to_decimal(candle.close),
+                                volume=Decimal(str(candle.volume)),
+                                adj_close=None,
+                                timeframe=timeframe,
+                                source=DataSource.TTECH
+                            ))
+                        
+                        current_from = chunk_to
+                        
+                        # Небольшая задержка между запросами для соблюдения rate limits
+                        if current_from < to_dt:
+                            await asyncio.sleep(0.1)
+                    
+                    logger.info(f"T-Tech: Retrieved {len(all_candles)} candles for {instrument}")
+                    return all_candles
                     
             except ImportError as e:
                 logger.error(f"t-tech-investments library not installed: {e}")
@@ -353,7 +492,7 @@ class TtechProvider(DataProvider):
         
         Args:
             instrument: Тикер инструмента.
-            depth: Глубина стакана.
+            depth: Глубина стакана (1-20).
             
         Returns:
             Стакан заявок.
@@ -361,14 +500,60 @@ class TtechProvider(DataProvider):
         async def _fetch():
             logger.debug(f"T-Tech: Fetching orderbook for {instrument} depth={depth}")
             
-            # Реальная реализация: gRPC GetOrderBook
-            # Для MVP заглушка
-            return L2OrderBook(
-                timestamp=datetime.utcnow(),
-                bids=[],
-                asks=[],
-                source=DataSource.TTECH
-            )
+            if not TTECH_LIBRARY_AVAILABLE:
+                logger.warning("t_tech.invest library not available. Returning empty orderbook.")
+                return L2OrderBook(
+                    timestamp=datetime.utcnow(),
+                    bids=[],
+                    asks=[],
+                    source=DataSource.TTECH
+                )
+            
+            # Получаем instrument_id
+            instrument_id = None
+            try:
+                async with AsyncClient(token=self.token) as client:
+                    response = await client.instruments.share_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+                        class_code='TQBR',
+                        id=instrument
+                    )
+                    instrument_id = response.instrument.uid or response.instrument.figi
+            except Exception as e:
+                logger.warning(f"Could not find instrument '{instrument}': {e}. Using as-is.")
+                instrument_id = instrument
+            
+            # Запрос стакана
+            async with AsyncClient(token=self.token) as client:
+                ob_response = await client.market_data.get_order_book(
+                    instrument_id=instrument_id,
+                    depth=depth
+                )
+                
+                # Конвертация в наши модели
+                bids = [
+                    L2OrderLevel(
+                        price=self._quotation_to_decimal(bid.price),
+                        volume=Decimal(str(bid.quantity))
+                    )
+                    for bid in ob_response.bids
+                ]
+                
+                asks = [
+                    L2OrderLevel(
+                        price=self._quotation_to_decimal(ask.price),
+                        volume=Decimal(str(ask.quantity))
+                    )
+                    for ask in ob_response.asks
+                ]
+                
+                return L2OrderBook(
+                    timestamp=self._timestamp_to_datetime(ob_response.orderbook_ts) if hasattr(ob_response, 'orderbook_ts') else datetime.utcnow(),
+                    bids=bids,
+                    asks=asks,
+                    last_price=self._quotation_to_decimal(ob_response.last_price) if hasattr(ob_response, 'last_price') else None,
+                    source=DataSource.TTECH
+                )
         
         try:
             return await self._execute_with_protection(
