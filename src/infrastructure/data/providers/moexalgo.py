@@ -112,7 +112,9 @@ class MoexAlgoProvider(DataProvider):
             # Индексы
             'MOEX_INDEX', 'RTS_INDEX', 'MOEX_OG', 'MOEX_BC',
             # Ставки и облигации
-            'RUONIA', 'RUSFAR', 'CBR_KEY_RATE'
+            'RUONIA', 'RUSFAR', 'CBR_KEY_RATE',
+            # OFZ облигации
+            'OFZ_26238', 'OFZ_26244'
         }
         
         # Маппинг тикеров для API запросов
@@ -137,7 +139,11 @@ class MoexAlgoProvider(DataProvider):
             # Ставки
             'RUONIA': 'RUONIA',
             'RUSFAR': 'RUSFAR',
-            'CBR_KEY_RATE': 'CBR_KEY_RATE'  # Специальный, берется из CBR
+            'CBR_KEY_RATE': 'CBR_KEY_RATE',  # Специальный, берется из CBR
+            
+            # OFZ облигации (ISIN коды)
+            'OFZ_26238': 'SU26238RMFS4',
+            'OFZ_26244': 'SU26244RMFS2'
         }
         
         # Инструменты, которые требуют специального处理方式
