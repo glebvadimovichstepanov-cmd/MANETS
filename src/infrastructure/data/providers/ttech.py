@@ -774,15 +774,13 @@ class TtechProvider(DataProvider):
                         )
                         
                         try:
-                            # Попытка получить свечи через GetCandles
-                            request = GetCandlesRequest(
+                            # Попытка получить свечи через GetCandles (новый API с именованными параметрами)
+                            response = await client.market_data.get_candles(
                                 instrument_id=instrument_id,
                                 interval=interval,
                                 from_=current_from,
                                 to=chunk_to
                             )
-                            
-                            response = await client.market_data.get_candles(request)
                             
                             if not response or not hasattr(response, 'candles'):
                                 logger.warning(f"No candles returned for {instrument} chunk")
