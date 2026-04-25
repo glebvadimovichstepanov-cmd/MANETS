@@ -117,6 +117,9 @@ class IncrementalSynchronizer:
         # Определение периода загрузки
         if checkpoint and checkpoint.last_timestamp:
             from_dt = checkpoint.last_timestamp
+            # Убедимся, что timestamp timezone-aware (UTC)
+            if from_dt.tzinfo is None:
+                from_dt = from_dt.replace(tzinfo=timezone.utc)
             # Добавляем небольшой overlap для безопасности (1 бар)
             from_dt = from_dt - self._get_tf_delta(timeframe)
         else:
@@ -124,7 +127,7 @@ class IncrementalSynchronizer:
             from_dt = datetime(2000, 1, 1, tzinfo=timezone.utc)
             logger.info(f"No checkpoint found. Full load from {from_dt}")
         
-        to_dt = datetime.utcnow().replace(tzinfo=timezone.utc)
+        to_dt = datetime.now(timezone.utc)
         
         # Проверка необходимости загрузки
         if to_dt - from_dt < self._get_tf_delta(timeframe):
