@@ -128,11 +128,11 @@ instruments:
       - ticker: OFZ_26238
         figi: SU26238RMFS4
         moex_code: SU26238RMFS4
-        moex_board: TQCB
+        moex_board: TQOB
       - ticker: OFZ_26244
         figi: SU26244RMFS2
         moex_code: SU26244RMFS2
-        moex_board: TQCB
+        moex_board: TQOB
       - ticker: RUONIA
         figi: null
         moex_code: RUONIA
