@@ -169,6 +169,13 @@ class MoexAlgoProvider(DataProvider):
             Timeframe.H1: '60',      # 1 час
             Timeframe.H2: '120',     # 2 часа
             Timeframe.H4: '240',     # 4 часа
+            Timeframe.D1: '24',      # День (24 часа для валют)
+            Timeframe.W1: '7',       # Неделя (7 дней)
+            Timeframe.MN: '31',      # Месяц (31 день)
+        }
+        
+        # Для индексов и акций используем буквенные обозначения
+        self._timeframe_map_stock = {
             Timeframe.D1: 'D',       # День
             Timeframe.W1: 'W',       # Неделя
             Timeframe.MN: 'M',       # Месяц
@@ -313,21 +320,24 @@ class MoexAlgoProvider(DataProvider):
                 columns = []
                 rows = []
                 
-                # Извлекаем названия колонок
-                cols_elem = block.find("columns")
+                # Извлекаем названия колонок из metadata/columns
+                cols_elem = block.find("metadata/columns")
+                if cols_elem is None:
+                    cols_elem = block.find("columns")
+                
                 if cols_elem is not None:
                     columns = [c.get("name") for c in cols_elem.findall("column")]
                 
-                # Извлекаем строки данных
+                # Извлекаем строки данных из rows/row
                 rows_elem = block.find("rows")
                 if rows_elem is not None:
                     for row in rows_elem.findall("row"):
                         row_data = []
-                        cells = row.findall("cell")
-                        for i, cell in enumerate(cells):
-                            val = cell.text
-                            # Попытка конвертации типов
-                            if val is not None and i < len(columns):
+                        # Данные в MOEX XML находятся в атрибутах элемента <row>, а не в cell
+                        for col_name in columns:
+                            val = row.get(col_name)
+                            if val is not None:
+                                # Попытка конвертации типов
                                 try:
                                     if "." in val:
                                         row_data.append(float(val))
@@ -336,7 +346,7 @@ class MoexAlgoProvider(DataProvider):
                                 except ValueError:
                                     row_data.append(val)
                             else:
-                                row_data.append(val)
+                                row_data.append(None)
                         rows.append(row_data)
                 
                 if columns and rows:
@@ -434,10 +444,20 @@ class MoexAlgoProvider(DataProvider):
                 url = f"{self.base_url}/engines/stock/markets/shares/securities/{instrument}/candles"
             
             # Параметры запроса
+            # Для валют используем числовые интервалы (24 для дневных), для акций/индексов - буквенные (D)
+            if is_currency:
+                interval = self._timeframe_map.get(timeframe, '24')
+            elif is_index or not is_macro:
+                # Для индексов и акций используем буквенные обозначения для D1/W1/MN
+                interval = self._timeframe_map_stock.get(timeframe, self._timeframe_map.get(timeframe, '1'))
+            else:
+                # Для товаров и других макро-инструментов
+                interval = self._timeframe_map.get(timeframe, '24')
+            
             params = {
                 'from': from_dt.strftime('%Y-%m-%d'),
                 'to': to_dt.strftime('%Y-%m-%d'),
-                'interval': self._timeframe_map.get(timeframe, '1'),
+                'interval': interval,
             }
             
             try:
