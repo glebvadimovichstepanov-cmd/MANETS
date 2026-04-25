@@ -281,19 +281,27 @@ class TtechProvider(DataProvider):
             datetime объект (UTC).
         """
         if ts is None:
+            # Если timestamp отсутствует, это ошибка - не должно происходить
+            logger.warning("Received None timestamp from API, using fallback")
             return datetime.utcnow()
         
         if hasattr(ts, 'seconds'):
-            # Tinkoff Timestamp
-            return datetime.fromtimestamp(ts.seconds, tz=None)
+            # Tinkoff Timestamp с полем seconds
+            return datetime.fromtimestamp(ts.seconds, tz=None).replace(tzinfo=None)
         
         if isinstance(ts, int):
-            return datetime.fromtimestamp(ts, tz=None)
+            return datetime.fromtimestamp(ts, tz=None).replace(tzinfo=None)
         
         if isinstance(ts, str):
             # ISO формат
-            return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            return datetime.fromisoformat(ts.replace('Z', '+00:00')).replace(tzinfo=None)
         
+        # Если тип неизвестен, пробуем получить атрибуты напрямую
+        if hasattr(ts, 'to_pydatetime'):
+            # pandas Timestamp
+            return ts.to_pydatetime().replace(tzinfo=None)
+        
+        logger.warning(f"Unknown timestamp type: {type(ts)}, value: {ts}")
         return datetime.utcnow()
     
     async def _get_grpc_client(self):
@@ -551,8 +559,17 @@ class TtechProvider(DataProvider):
                         )
                         
                         for candle in candles_response.candles:
+                            # Отладка: проверяем исходный timestamp
+                            ts_raw = candle.time
+                            logger.debug(f\"Raw candle time: {ts_raw}, type: {type(ts_raw)}\")
+                            if hasattr(ts_raw, 'seconds'):
+                                logger.debug(f\"  seconds={ts_raw.seconds}, nanos={getattr(ts_raw, 'nano', None)}\")
+                            
+                            dt = self._timestamp_to_datetime(candle.time)
+                            logger.debug(f\"Converted datetime: {dt}\")
+                            
                             all_candles.append(Candle(
-                                timestamp=self._timestamp_to_datetime(candle.time),
+                                timestamp=dt,
                                 open=self._quotation_to_decimal(candle.open),
                                 high=self._quotation_to_decimal(candle.high),
                                 low=self._quotation_to_decimal(candle.low),
