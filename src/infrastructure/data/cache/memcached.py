@@ -254,7 +254,7 @@ class MemcachedClient:
                 self._client = aiomcache.Client(
                     host=host_info['host'],
                     port=host_info['port'],
-                    poolsize=10,
+                    pool_size=10,
                     max_idle_time=300
                 )
                 
