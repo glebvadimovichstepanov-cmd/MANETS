@@ -1,1 +1,1 @@
-Nothing should be ignored based on the provided file changes, as they only include source code files (.py) without any build artifacts, dependencies, or temporary files.
+Nothing should be ignored based on the provided file changes. The modification of 'src/infrastructure/data/providers/moexalgo.py' is a source code file and does not require any new ignore rules.

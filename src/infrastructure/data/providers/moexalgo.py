@@ -71,16 +71,17 @@ class MoexAlgoProvider(DataProvider):
         )
         
         self.endpoints = config.get('endpoints', {})
-        self.base_url = self.endpoints.get('base_url', 'https://apim.moex.com')
+        # MOEX API доступен только через публичный ISS API (apim.moex.com требует авторизации)
+        self.base_url = 'https://iss.moex.com/iss'
         
         # Получение токена из env (приоритет: MOEX_TOKEN)
         token_env = config.get('auth_token_env', 'MOEX_TOKEN')
         self.token = os.environ.get(token_env, '').strip()
         
         if not self.token:
-            logger.warning(
+            logger.info(
                 f"Auth token not found in env variable '{token_env}'. "
-                "Some MOEX endpoints may require authentication."
+                "Using public ISS API (some endpoints may be rate-limited)."
             )
         else:
             logger.info(f"MOEX token loaded from {token_env} (length={len(self.token)})")
@@ -314,20 +315,18 @@ class MoexAlgoProvider(DataProvider):
             is_currency = instrument in ['USD_RUB', 'EUR_RUB', 'CNY_RUB', 'GBP_RUB', 'KZT_RUB']
             is_index = instrument in ['MOEX_INDEX', 'RTS_INDEX', 'MOEX_OG', 'MOEX_BC']
             
-            # Построение URL
+            # Построение URL для ISS API
             if is_macro:
                 # Макро-инструменты (валюты, индексы, товары)
-                board = 'MAIN'
-                if is_currency:
-                    board = 'CURR'
-                elif is_index:
-                    board = 'INDEX'
+                engine = 'stock'
+                market = 'currency' if is_currency else ('index' if is_index else 'main')
                 
                 ticker = self._macro_ticker_map.get(instrument, instrument)
-                url = f"{self.base_url}/engines/stock/markets/{board.lower()}/boards/{board}/securities/{ticker}/candles"
+                # Для индексов и валют не указываем board в URL
+                url = f"{self.base_url}/engines/{engine}/markets/{market}/securities/{ticker}/candles"
             else:
                 # Акции
-                url = f"{self.base_url}/engines/stock/markets/shares/boards/TQBR/securities/{instrument}/candles"
+                url = f"{self.base_url}/engines/stock/markets/shares/securities/{instrument}/candles"
             
             # Параметры запроса
             params = {
