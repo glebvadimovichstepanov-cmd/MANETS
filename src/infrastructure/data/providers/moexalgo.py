@@ -612,35 +612,34 @@ class MoexAlgoProvider(DataProvider):
                 # Используем moex_code из конфига через get_moex_code с передачей from_dt
                 # для автоматического определения контракта фьючерса
                 ticker = self.get_moex_code(instrument, from_dt) or self._macro_ticker_map.get(instrument, instrument)
-                
-                # Получаем board из конфига
+                # Получаем board из конфига (может использоваться для индексов и облигаций)
                 board = self.get_moex_board(instrument)
-                
+
                 if is_currency:
                     engine = 'currency'
                     market = 'selt'
-                    if not board:
-                        board = 'TQBR'
+                    # Для валют используем URL без board - MOEX ISS API требует такой формат
+                    url = f"{self.base_url}/engines/{engine}/markets/{market}/securities/{ticker}/candles"
                 elif is_index:
                     engine = 'stock'
                     market = 'index'
                     if not board:
                         board = 'INDEX'
+                    url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
                 elif is_bond:
                     # Облигации: используем TQCB (корпоративные) или TQOB (государственные)
                     engine = 'stock'
                     market = 'bonds'
                     if not board:
                         board = 'TQCB'  # По умолчанию корпоративные, но OFZ лучше на TQCB
+                    url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
                 else:
                     # Товары - фьючерсы (BRENT, NATURAL_GAS, GOLD, SILVER)
                     # Фьючерсы торгуются на FORTS (Forts Derivatives Market)
+                    # Используем URL без board для фьючерсов - MOEX ISS API требует такой формат
                     engine = 'futures'
                     market = 'forts'
-                    if not board:
-                        board = 'SPBFUT'  # Основная площадка для фьючерсов
-                
-                # Формируем URL с board для надежного получения данных
+                    url = f"{self.base_url}/engines/{engine}/markets/{market}/securities/{ticker}/candles"
                 url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
             else:
                 # Акции
