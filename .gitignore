@@ -1,46 +1,31 @@
-```
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+```yaml
+# Configuration file for data collection
+data_source:
+  type: "api"
+  endpoint: "https://api.example.com/data"
+  timeout: 30
+  retry_attempts: 3
 
-# Dependencies
-.venv/
-venv/
-env/
-.env
-.env.local
-.env.*
+collection_settings:
+  interval_minutes: 60
+  batch_size: 100
+  max_concurrent_workers: 5
 
-# Logs
-*.log
+output_format:
+  format: "json"
+  compression: true
+  timestamp_field: "collected_at"
 
-# Coverage
-.coverage
-coverage/
-htmlcov/
+filters:
+  include_fields: ["id", "name", "value", "timestamp"]
+  exclude_patterns: ["temp_*", "*_backup"]
 
-# Testing
-.pytest_cache/
-.mypy_cache/
-.hypothesis/
+error_handling:
+  log_errors: true
+  error_threshold: 10
+  pause_on_error: false
 
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# OS
-.DS_Store
-Thumbs.db
+metrics:
+  enable_monitoring: true
+  metrics_endpoint: "http://localhost:9090/metrics"
 ```
