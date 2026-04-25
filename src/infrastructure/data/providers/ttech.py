@@ -132,13 +132,16 @@ class TtechProvider(DataProvider):
         
         # Получение токена из env (приоритет: INVEST_TOKEN для t-tech-investments)
         token_env = config.get('auth_token_env', 'INVEST_TOKEN')
-        self.token = os.environ.get(token_env, '')
+        self.token = os.environ.get(token_env, '').strip()
         
         if not self.token:
-            logger.warning(
+            logger.error(
                 f"Auth token not found in env variable '{token_env}'. "
-                "Set INVEST_TOKEN environment variable for T-Tech Investments API access."
+                "Set INVEST_TOKEN environment variable for T-Tech Investments API access. "
+                "Token format should be like: t.ZLtpCN0pOiGj8WbOU0xxGgpCWxBH5vmnYH-hzvgXQesS04yGMtEiw1tzJevGZox1r6nVMXi0z0QMO3BaRH7lBA"
             )
+        else:
+            logger.info(f"Token loaded from {token_env} (length={len(self.token)}, starts with: {self.token[:5]}...)")
         
         # Клиенты (ленивая инициализация)
         self._grpc_client = None
@@ -352,7 +355,15 @@ class TtechProvider(DataProvider):
                 total_days = (to_dt - from_dt).days
                 
                 # Получаем FIGI или UID для тикера
-                async with AsyncClient(token=self.token) as client:
+                # Токен должен быть передан без префиксов "Bearer" или "t."
+                clean_token = self.token
+                if clean_token.startswith('t.'):
+                    # Оставляем токен как есть, библиотека сама добавит нужные заголовки
+                    pass
+                
+                logger.debug(f"T-Tech: Using token (length={len(clean_token)}, starts with: {clean_token[:5]}...)")
+                
+                async with AsyncClient(token=clean_token) as client:
                     instruments = client.instruments
                     
                     # Поиск инструмента по тикуру
