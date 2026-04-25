@@ -537,7 +537,7 @@ class TtechProvider(DataProvider):
         self,
         instrument: str,
         depth: int = 10
-    ) -> L2OrderBook:
+    ) -> Optional[L2OrderBook]:
         """
         Получение стакана заявок L2.
         
@@ -546,19 +546,14 @@ class TtechProvider(DataProvider):
             depth: Глубина стакана (1-20).
             
         Returns:
-            Стакан заявок.
+            Стакан заявок или None если стакан пуст.
         """
         async def _fetch():
             logger.debug(f"T-Tech: Fetching orderbook for {instrument} depth={depth}")
             
             if not TTECH_LIBRARY_AVAILABLE:
                 logger.warning("t_tech.invest library not available. Returning empty orderbook.")
-                return L2OrderBook(
-                    timestamp=datetime.utcnow(),
-                    bids=[],
-                    asks=[],
-                    source=DataSource.TTECH
-                )
+                return None
             
             # Получаем instrument_id с поддержкой разных классов инструментов
             instrument_id = None
@@ -594,6 +589,11 @@ class TtechProvider(DataProvider):
                     instrument_id=instrument_id,
                     depth=depth
                 )
+                
+                # Проверка на пустой стакан
+                if not ob_response.bids and not ob_response.asks:
+                    logger.warning(f"T-Tech: Empty orderbook for {instrument} (no bids/asks). Skipping.")
+                    return None
                 
                 # Конвертация в наши модели
                 # t_tech.invest использует поле 'volume' вместо 'quantity'
@@ -632,7 +632,7 @@ class TtechProvider(DataProvider):
                 )
         
         try:
-            # Передаем корутину правильно - создаем её внутри _execute_with_protection
+            # Передаем factory функцию которая создает новую корутину при каждом вызове
             async def _execute_fetch():
                 return await self._retry_with_backoff(_fetch(), f"get_orderbook:{instrument}")
             
