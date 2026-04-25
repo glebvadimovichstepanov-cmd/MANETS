@@ -587,9 +587,6 @@ class TtechProvider(DataProvider):
                                 source=DataSource.TTECH
                             ))
                         
-                        # Сортируем свечи по timestamp (T-Tech API может возвращать в обратном порядке)
-                        all_candles.sort(key=lambda c: c.timestamp)
-                        
                         current_from = chunk_to
                         
                         # Задержка между запросами для соблюдения rate limits Tinkoff API

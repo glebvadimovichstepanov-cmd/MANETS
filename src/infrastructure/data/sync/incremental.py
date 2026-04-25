@@ -227,6 +227,9 @@ class IncrementalSynchronizer:
                 'duration_ms': (datetime.utcnow() - start_time).total_seconds() * 1000
             }
         
+        # Сортировка всех свечей по timestamp (API может возвращать в обратном порядке)
+        all_candles.sort(key=lambda c: c.timestamp)
+        
         # Конвертация в dict для хранения
         candles_dict = [self._candle_to_dict(c) for c in all_candles]
         
