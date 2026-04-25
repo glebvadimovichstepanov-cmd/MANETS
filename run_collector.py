@@ -30,9 +30,18 @@ from typing import List, Optional
 # Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.config.loader import ConfigLoader
-from src.data_collection.collector import DataCollector
-from src.infrastructure.logging.setup import setup_logging
+from src.infrastructure.data.config import ConfigLoader
+from src.infrastructure.data.collector import DataCollector
+from src.infrastructure.data.models import Timeframe
+
+
+def setup_logging(level: int = logging.INFO) -> None:
+    """Базовая настройка логирования."""
+    logging.basicConfig(
+        level=level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -106,8 +115,8 @@ async def main():
             logger.info("Создайте файл конфигурации или укажите правильный путь через --config")
             sys.exit(1)
         
-        config_loader = ConfigLoader()
-        config = config_loader.load(config_path)
+        config_loader = ConfigLoader(str(config_path))
+        config = config_loader.load()
         
         logger.info(f"Конфигурация успешно загружена")
         logger.info(f"  Log Level: {config.general.log_level}")
@@ -123,7 +132,6 @@ async def main():
             tickers = config.instruments.tickers
             
         if args.timeframes:
-            from src.models.enums import Timeframe
             tf_map = {
                 'M1': Timeframe.M1, 'M5': Timeframe.M5, 'M10': Timeframe.M10,
                 'M15': Timeframe.M15, 'H1': Timeframe.H1, 'H4': Timeframe.H4,
@@ -146,9 +154,9 @@ async def main():
         if args.dry_run:
             logger.info("РЕЖИМ ПРОВЕРКИ (dry-run) - данные не будут сохраняться")
             # Проверка доступности провайдеров
-            await collector._initialize_providers()
+            await collector.start()
             logger.info("Проверка провайдеров завершена успешно")
-            await collector.close()
+            await collector.stop()
             logger.info("Проверка завершена. Выход.")
             return
         
@@ -164,8 +172,8 @@ async def main():
                 try:
                     logger.info(f"Сбор данных: {ticker} [{timeframe.value}]")
                     
-                    candles = await collector.fetch_ohlcv(
-                        ticker=ticker,
+                    candles = await collector.collect(
+                        instrument=ticker,
                         timeframe=timeframe
                     )
                     
@@ -174,11 +182,12 @@ async def main():
                         total_candles += count
                         logger.info(f"  ✓ Получено {count} свечей")
                         
-                        # Сохранение данных
-                        await collector.save_ohlcv(
+                        # Сохранение данных через storage
+                        candles_dict = [c.model_dump(mode='json') for c in candles]
+                        await collector._storage.write_ohlcv(
                             ticker=ticker,
-                            timeframe=timeframe,
-                            candles=candles
+                            timeframe=timeframe.value,
+                            candles=candles_dict
                         )
                         logger.info(f"  ✓ Данные сохранены")
                     else:
