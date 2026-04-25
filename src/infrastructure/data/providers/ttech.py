@@ -173,7 +173,7 @@ class TtechProvider(DataProvider):
             # Валютные пары (FIGI для tom-расчетов)
             'USD_RUB': 'USD000UTSTOM',   # USD/RUB tom
             'EUR_RUB': 'EUR000UTSTOM',   # EUR/RUB tom
-            'CNY_RUB': 'CNY000UTSTOM',   # CNY/RUB tom
+            'CNY_RUB': 'CNYRUB',         # CNY/RUB (ticker в VALNET)
             
             # Товары (фьючерсы - ближайшие контракты)
             # Примечание: фьючерсы имеют ограниченный срок жизни, нужно обновлять
@@ -196,10 +196,10 @@ class TtechProvider(DataProvider):
             'CBR_KEY_RATE',  # Требуется внешний источник (ЦБ РФ)
         }
         
-        # Альтернативные FIGI для инструментов, если основные не работают
+        # Альтернативные FIGI/UID для инструментов, если основные не работают
         self._fallback_figi_map = {
-            # Валюты - альтернативные инструменты (бессрочные контракты)
-            'CNY_RUB': ['CNY000UTSTOM', 'CNYRUB_TOM'],
+            # Валюты - альтернативные инструменты (бессрочные контракты, UID)
+            'CNY_RUB': ['CNYRUB', '59ace78f-e1ae-4d65-ac3a-b7c85b6a48e2'],  # CNYRUB ticker и UID
             
             # Товары - ETF на нефть и газ вместо фьючерсов
             'BRENT': ['SBGB', 'OIL'],  # ETF на нефть
@@ -821,6 +821,41 @@ class TtechProvider(DataProvider):
         elif instrument in ['USD_RUB', 'EUR_RUB', 'CNY_RUB']:
             # Валютные пары - используем currency_by
             # На Московской бирже валютные пары торгуются в классе VALNET (tom-расчеты)
+            
+            # Для CNY_RUB сначала пробуем поиск по тикеру, так как FIGI может не работать
+            if instrument == 'CNY_RUB':
+                try:
+                    logger.info(f"T-Tech Macro: Searching {instrument} by ticker in VALNET class (primary)")
+                    response = await client.instruments.currency_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+                        class_code='VALNET',
+                        id='CNYRUB'
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found {instrument} via currency_by (VALNET ticker): instrument_id={inst.uid}, figi={inst.figi}, ticker={inst.ticker}")
+                        return inst.uid or inst.figi
+                except Exception as e:
+                    logger.debug(f"T-Tech Macro: currency_by (VALNET ticker) failed for {instrument}: {e}")
+                
+                # Пробуем альтернативные варианты из fallback списка
+                fallback_list = self._fallback_figi_map.get(instrument, [])
+                for alt_id in fallback_list:
+                    try:
+                        # Пробуем как UID
+                        logger.info(f"T-Tech Macro: Trying alternative UID {alt_id} for {instrument}")
+                        response = await client.instruments.currency_by(
+                            id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_UID,
+                            id=alt_id
+                        )
+                        if response and hasattr(response, 'instrument'):
+                            inst = response.instrument
+                            logger.info(f"T-Tech Macro: Found {instrument} via alternative UID {alt_id}: instrument_id={inst.uid}")
+                            return inst.uid or inst.figi
+                    except Exception as e:
+                        logger.debug(f"T-Tech Macro: currency_by (UID) failed for {alt_id}: {e}")
+            
+            # Стандартная логика для USD_RUB и EUR_RUB (и fallback для CNY_RUB)
             # Сначала пробуем основной FIGI
             try:
                 mapped_figi = self._macro_ticker_map.get(instrument)
@@ -837,26 +872,9 @@ class TtechProvider(DataProvider):
             except Exception as e:
                 logger.debug(f"T-Tech Macro: currency_by (FIGI) failed for {instrument}: {e}")
             
-            # Пробуем альтернативные FIGI из fallback списка
-            fallback_list = self._fallback_figi_map.get(instrument, [])
-            for alt_figi in fallback_list:
-                try:
-                    logger.info(f"T-Tech Macro: Trying alternative FIGI {alt_figi} for {instrument}")
-                    response = await client.instruments.currency_by(
-                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
-                        id=alt_figi
-                    )
-                    if response and hasattr(response, 'instrument'):
-                        inst = response.instrument
-                        logger.info(f"T-Tech Macro: Found currency {instrument} via alternative FIGI {alt_figi}: instrument_id={inst.uid}")
-                        return inst.uid or inst.figi
-                except Exception as e:
-                    logger.debug(f"T-Tech Macro: currency_by failed for {alt_figi}: {e}")
-            
-            # Fallback: пробуем найти по тикеру в классе VALNET
+            # Пробуем найти по тикеру в VALNET (для USD_RUB и EUR_RUB)
             try:
                 logger.info(f"T-Tech Macro: Searching currency {instrument} by ticker in VALNET class")
-                # Для валют используем тикер из маппинга (например, USD000UTSTOM)
                 mapped_ticker = self._macro_ticker_map.get(instrument, instrument)
                 response = await client.instruments.currency_by(
                     id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
