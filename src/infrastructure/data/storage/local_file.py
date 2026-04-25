@@ -264,7 +264,7 @@ class LocalFileStorage:
     async def write_ohlcv(
         self,
         ticker: str,
-        timeframe: Timeframe,
+        timeframe: Union[Timeframe, str],
         candles: List[Dict[str, Any]],
         append: bool = True
     ) -> bool:
@@ -280,6 +280,10 @@ class LocalFileStorage:
         Returns:
             True если успешно.
         """
+        # Конвертация timeframe в Timeframe enum если это строка
+        if isinstance(timeframe, str):
+            timeframe = Timeframe(timeframe)
+        
         lock_key = f"ohlcv:{ticker}:{timeframe.value}"
         async with self._get_lock(lock_key):
             path = self._get_ticker_path(ticker, timeframe, "ohlcv")
@@ -304,20 +308,31 @@ class LocalFileStorage:
         Удаление дубликатов свечей по timestamp.
         
         Args:
-            candles: Список свечей.
+            candles: Список свечей (dict или Candle объекты).
             
         Returns:
             Список без дубликатов.
         """
         seen = {}
         for candle in candles:
-            ts = candle.get('timestamp')
+            # Обработка как dict так и Candle объектов
+            if hasattr(candle, 'timestamp'):
+                # Это Candle объект
+                ts = candle.timestamp.isoformat() if hasattr(candle.timestamp, 'isoformat') else str(candle.timestamp)
+                is_complete = getattr(candle, 'is_complete', False)
+                candle_data = candle.model_dump(mode='json') if hasattr(candle, 'model_dump') else candle
+            else:
+                # Это dict
+                ts = candle.get('timestamp')
+                is_complete = candle.get('is_complete', False)
+                candle_data = candle
+            
             if ts not in seen:
-                seen[ts] = candle
+                seen[ts] = candle_data
             else:
                 # Обновление если новая версия (например, is_complete изменился)
-                if candle.get('is_complete', False) and not seen[ts].get('is_complete', False):
-                    seen[ts] = candle
+                if is_complete and not seen[ts].get('is_complete', False):
+                    seen[ts] = candle_data
         
         # Сортировка по timestamp
         return sorted(seen.values(), key=lambda c: c.get('timestamp', ''))
