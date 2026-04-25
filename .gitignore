@@ -1,20 +1,32 @@
 ```
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Logs and temp files
-*.log
-*.tmp
+# IDE
+.vscode/
+.idea/
 
 # Environment
 .env
 .env.local
-*.env.*
-
-# Dependencies
-.venv/
-venv/
+.env.*
 ```

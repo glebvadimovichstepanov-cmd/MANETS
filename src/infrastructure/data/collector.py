@@ -480,6 +480,28 @@ class DataCollector:
             }
         }
     
+    @property
+    def primary_provider(self) -> Optional[DataProvider]:
+        """Получение основного провайдера (первый доступный)."""
+        if not self._providers:
+            return None
+        return self._router.get_provider('ohlcv', 'ANY')
+    
+    @property
+    def storage(self) -> LocalFileStorage:
+        """Получение хранилища."""
+        return self._storage
+    
+    @property
+    def cache(self) -> Optional[MemcachedClient]:
+        """Получение кэша."""
+        return self._cache
+    
+    @property
+    def validator(self) -> DataValidator:
+        """Получение валидатора."""
+        return self._validator
+    
     @classmethod
     def from_config(
         cls,
