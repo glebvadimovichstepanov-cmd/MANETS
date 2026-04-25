@@ -1,63 +1,48 @@
-```
-# Environment
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+*.out
+*.class
+*.dll
+*.so
+*.a
+*.exe
+
+# Dependencies
+.venv/
+venv/
 .env
 .env.local
 *.env.*
 
-# Dependencies
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-.eggs/
-venv/
-.venv/
-env/
-.ENV/
-
-# Build artifacts
-build/
-dist/
-*.egg
-*.whl
-pip-wheel-metadata/
-
-# Logs
+# Logs and temp files
 *.log
+*.tmp
+*.swp
+*.swo
 
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Editor files
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-*.tmp
 
-# Coverage reports
+# System files
+.DS_Store
+Thumbs.db
+
+# Coverage
 .coverage
-htmlcov/
 coverage/
+htmlcov/
 
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Testing
-.pytest_cache/
+# Build systems
+dist/
+build/
+target/
+.gradle/
 .mypy_cache/
-.hypothesis/
-
-# Distribution / packaging
-.Python
-*.egg-info/
-.egg-info/
-.installed.cfg
-*.egg-link
-```
+.pytest_cache/
+node_modules/
