@@ -93,39 +93,50 @@ instruments:
       - ticker: USD_RUB
         figi: USD000UTSTOM
         moex_code: USDRUB_TOM
+        moex_board: TQBR
       - ticker: EUR_RUB
         figi: EUR000UTSTOM
         moex_code: EURRUB_TOM
+        moex_board: TQBR
       - ticker: CNY_RUB
         figi: CNY000UTSTOM
         moex_code: CNYRUB_TOM
+        moex_board: TQBR
     commodities:
       - ticker: BRENT
         figi: BBG00X3NNN89
         moex_code: BR
+        moex_board: SPBFUT
       - ticker: NATURAL_GAS
         figi: BBG00BVPV426
         moex_code: NG
+        moex_board: SPBFUT
     indices:
       - ticker: MOEX_INDEX
         figi: MXBD
         moex_code: IMOEX
+        moex_board: INDEX
       - ticker: RTS_INDEX
         figi: RTSD
         moex_code: RTSI
+        moex_board: INDEX
     rates:
       - ticker: CBR_KEY_RATE
         figi: null
         moex_code: null
+        moex_board: null
       - ticker: OFZ_26238
         figi: SU26238RMFS4
         moex_code: SU26238RMFS4
+        moex_board: TQCB
       - ticker: OFZ_26244
         figi: SU26244RMFS2
         moex_code: SU26244RMFS2
+        moex_board: TQCB
       - ticker: RUONIA
         figi: null
         moex_code: RUONIA
+        moex_board: TQOB
 
 # Настройки кэширования (Memcached)
 cache:

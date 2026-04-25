@@ -53,7 +53,8 @@ class MoexAlgoProvider(DataProvider):
         self,
         config: Dict[str, Any],
         rate_limit_config: Optional[Dict[str, Any]] = None,
-        circuit_breaker_config: Optional[Dict[str, Any]] = None
+        circuit_breaker_config: Optional[Dict[str, Any]] = None,
+        macro_instruments_config: Optional[Dict[str, List[Dict[str, Any]]]] = None
     ):
         """
         Инициализация MoexAlgo провайдера.
@@ -62,6 +63,7 @@ class MoexAlgoProvider(DataProvider):
             config: Конфигурация провайдера (endpoints, auth_token_env).
             rate_limit_config: Конфигурация rate limiter.
             circuit_breaker_config: Конфигурация circuit breaker.
+            macro_instruments_config: Конфигурация макро-инструментов из YAML (currencies, commodities, indices, rates).
         """
         super().__init__(
             name="moexalgo",
@@ -96,6 +98,20 @@ class MoexAlgoProvider(DataProvider):
         self._retry_base_delay = 1.0
         self._retry_max_delay = 60.0
         
+        # Загрузка конфигурации макро-инструментов
+        self._macro_instruments_map: Dict[str, Dict[str, Any]] = {}
+        if macro_instruments_config:
+            for category in ['currencies', 'commodities', 'indices', 'rates']:
+                instruments = macro_instruments_config.get(category, [])
+                for instr in instruments:
+                    ticker = instr.get('ticker')
+                    if ticker:
+                        self._macro_instruments_map[ticker] = {
+                            'figi': instr.get('figi'),
+                            'moex_code': instr.get('moex_code'),
+                            'moex_board': instr.get('moex_board')
+                        }
+        
         # Поддерживаемые инструменты MOEX
         self._supported_tickers = {
             # Голубые фишки
@@ -107,7 +123,7 @@ class MoexAlgoProvider(DataProvider):
         }
         
         # Поддерживаемые макро-инструменты MOEX
-        self._supported_macro = {
+        self._supported_macro = set(self._macro_instruments_map.keys()) or {
             # Валюты
             'USD_RUB', 'EUR_RUB', 'CNY_RUB', 'GBP_RUB', 'KZT_RUB',
             # Товары (фьючерсы)
@@ -216,6 +232,10 @@ class MoexAlgoProvider(DataProvider):
         Returns:
             FIGI или None если не найден.
         """
+        # Сначала пробуем получить из конфигурации
+        if instrument in self._macro_instruments_map:
+            return self._macro_instruments_map[instrument].get('figi')
+        # Fallback на старый маппинг
         return self._figi_map.get(instrument)
     
     def get_moex_code(self, instrument: str) -> Optional[str]:
@@ -228,7 +248,26 @@ class MoexAlgoProvider(DataProvider):
         Returns:
             Код MOEX или None если не найден.
         """
+        # Сначала пробуем получить из конфигурации
+        if instrument in self._macro_instruments_map:
+            return self._macro_instruments_map[instrument].get('moex_code')
+        # Fallback на старый маппинг
         return self._macro_ticker_map.get(instrument)
+    
+    def get_moex_board(self, instrument: str) -> Optional[str]:
+        """
+        Получение торговой площадки (board) для инструмента MOEX.
+        
+        Args:
+            instrument: Тикер инструмента.
+            
+        Returns:
+            Код board или None если не найден.
+        """
+        # Получаем из конфигурации
+        if instrument in self._macro_instruments_map:
+            return self._macro_instruments_map[instrument].get('moex_board')
+        return None
     
     async def _get_session(self) -> aiohttp.ClientSession:
         """Ленивая инициализация HTTP сессии."""
@@ -466,29 +505,47 @@ class MoexAlgoProvider(DataProvider):
             is_macro = instrument in self._supported_macro
             is_currency = instrument in ['USD_RUB', 'EUR_RUB', 'CNY_RUB', 'GBP_RUB', 'KZT_RUB']
             is_index = instrument in ['MOEX_INDEX', 'RTS_INDEX', 'MOEX_OG', 'MOEX_BC']
+            is_bond = instrument.startswith('OFZ_')  # Облигации
             
             # Построение URL для ISS API
             if is_macro:
-                # Макро-инструменты (валюты, индексы, товары)
+                # Макро-инструменты (валюты, индексы, товары, облигации)
                 # Валюты используют engine=currency, market=selt
                 # Индексы используют engine=stock, market=index
                 # Товары используют engine=stock, market=main
+                # Облигации используют engine=stock, market=bonds
                 
                 # Используем moex_code из конфига через get_moex_code, fallback на старый маппинг
                 ticker = self.get_moex_code(instrument) or self._macro_ticker_map.get(instrument, instrument)
                 
+                # Получаем board из конфига
+                board = self.get_moex_board(instrument)
+                
                 if is_currency:
                     engine = 'currency'
                     market = 'selt'
+                    if not board:
+                        board = 'TQBR'
                 elif is_index:
                     engine = 'stock'
                     market = 'index'
+                    if not board:
+                        board = 'INDEX'
+                elif is_bond:
+                    # Облигации: используем TQCB (корпоративные) или TQOB (государственные)
+                    engine = 'stock'
+                    market = 'bonds'
+                    if not board:
+                        board = 'TQCB'  # По умолчанию корпоративные, но OFZ лучше на TQCB
                 else:
                     # Товары
                     engine = 'stock'
                     market = 'main'
+                    if not board:
+                        board = 'MAIN'
                 
-                url = f"{self.base_url}/engines/{engine}/markets/{market}/securities/{ticker}/candles"
+                # Формируем URL с board для надежного получения данных
+                url = f"{self.base_url}/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles"
             else:
                 # Акции
                 url = f"{self.base_url}/engines/stock/markets/shares/securities/{instrument}/candles"
