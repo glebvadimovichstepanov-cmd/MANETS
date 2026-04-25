@@ -291,13 +291,16 @@ class MoexAlgoProvider(DataProvider):
         """
         Определение кода конкретного фьючерсного контракта.
         
-        Формат: {BASE}{MONTH}{YEAR}
+        Формат: {BASE}{MONTH_CODE}{YEAR}
         Примеры: BRM6 (Brent июнь 2026), BRU6 (Brent сентябрь 2026)
         
         Логика выбора:
-        - Выбирается ближайший квартальный контракт (Март, Июнь, Сентябрь, Декабрь)
-        - Контракт должен быть еще активен (дата экспирации не прошла)
-        - По умолчанию выбирается контракт через 1-3 месяца от текущей даты
+        - Для Brent на MOEX: ежемесячная экспирация
+        - Контракты: F=Янв, G=Фев, H=Март, J=Апр, K=Май, M=Июн, N=Июл, Q=Авг, U=Сен, V=Окт, X=Ноя, Z=Дек
+        - Экспирация происходит ~20 числа текущего месяца для следующего месяца поставки
+        - Например: BRJ26 (апрель 2026) экспирируется ~20 марта 2026
+        - После 20 марта активным становится BRK6 (май 2026)
+        - После 20 апреля активным становится BRM6 (июнь 2026)
         
         Args:
             base_code: Базовый код фьючерса (BR, NG, GLD, SLV).
@@ -306,31 +309,44 @@ class MoexAlgoProvider(DataProvider):
         Returns:
             Полный код контракта (например, BRM6).
         """
-        # Квартальные месяцы для фьючерсов
-        quarter_months = [3, 6, 9, 12]
-        
         year = from_dt.year
         month = from_dt.month
+        day = from_dt.day
         
-        # Находим следующий квартальный месяц
-        next_quarter_month = None
-        for qm in quarter_months:
-            if qm >= month:
-                next_quarter_month = qm
-                break
+        # Для Brent и других фьючерсов MOEX:
+        # Экспирация происходит ~20 числа текущего месяца для СЛЕДУЮЩЕГО месяца поставки
+        # Например:
+        #   - 15 апреля 2026 -> BRK6 (поставка в мае, экспирация ~20 апреля) ЕЩЕ активен
+        #   - 25 апреля 2026 -> BRK6 уже не активен (экспирация прошла), нужен BRM6 (июнь)
         
-        # Если все квартальные месяцы в этом году уже прошли, берем первый квартал следующего года
-        if next_quarter_month is None:
-            next_quarter_month = 3  # Март
-            year += 1
+        # Определяем пороговый день переключения (20-е число)
+        roll_day = 20
+        
+        if day >= roll_day:
+            # Уже после дня переключения - берем СЛЕДУЮЩИЙ месяц
+            contract_month = month + 2  # +2 потому что текущий месяц еще не закончился
+            contract_year = year
+            if contract_month > 12:
+                contract_month -= 12
+                contract_year += 1
+        else:
+            # До дня переключения - берем СЛЕДУЮЩИЙ месяц (поставка в следующем месяце)
+            contract_month = month + 1
+            contract_year = year
+            if contract_month > 12:
+                contract_month = 1
+                contract_year += 1
         
         # Получаем буквенный код месяца
-        month_letter = self._futures_month_codes.get(next_quarter_month, 'H')
+        month_letter = self._futures_month_codes.get(contract_month, 'H')
         
         # Две последние цифры года
-        year_suffix = str(year)[-2:]
+        year_suffix = str(contract_year)[-2:]
         
-        return f"{base_code}{month_letter}{year_suffix}"
+        contract_code = f"{base_code}{month_letter}{year_suffix}"
+        logger.info(f"Auto-selected futures contract {contract_code} for {base_code} as of {from_dt.date()} (delivery_month={contract_month}, year={contract_year})")
+        
+        return contract_code
     
     def get_moex_board(self, instrument: str) -> Optional[str]:
         """
