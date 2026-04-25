@@ -1,10 +1,10 @@
 {
-  "snapshot_id": "CNY_RUB_1M_20260425_130237",
+  "snapshot_id": "CNY_RUB_1m_20260425_145651",
   "instrument": "CNY_RUB",
-  "timeframe": "1M",
+  "timeframe": "1m",
   "data_type": "macro",
-  "created_at": "2026-04-25T13:02:37.988612",
-  "updated_at": "2026-04-25T13:02:37.988595",
+  "created_at": "2026-04-25T14:56:51.316094",
+  "updated_at": "2026-04-25T14:56:51.316084",
   "checkpoint": null,
   "validation_report": {
     "passed": true,
@@ -25,5 +25,5 @@
   "source_chain": [
     "ttech"
   ],
-  "total_records": 1
+  "total_records": 2001
 }
