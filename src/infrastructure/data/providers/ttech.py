@@ -666,10 +666,10 @@ class TtechProvider(DataProvider):
         if instrument.startswith('OFZ_') or instrument.startswith('SU'):
             # Облигации - используем bond_by
             try:
-                # Пытаемся найти по ticker в классе облигаций
+                # Пытаемся найти по ticker в классе облигаций (TQCB - основной класс для облигаций)
                 response = await client.instruments.bond_by(
                     id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
-                    class_code='TQOB',  # Класс для облигаций
+                    class_code='TQCB',  # Класс для облигаций (TQCB - Тинькофф Облигации)
                     id=instrument
                 )
                 if response and hasattr(response, 'instrument'):
@@ -679,10 +679,38 @@ class TtechProvider(DataProvider):
             except Exception as e:
                 logger.debug(f"T-Tech Macro: bond_by failed for {instrument}: {e}")
             
-            # Если не нашли по тикеру, пробуем использовать mapped FIGI напрямую
+            # Если не нашли по тикеру с class_code=TQCB, пробуем TQOB (для некоторых облигаций)
+            try:
+                response = await client.instruments.bond_by(
+                    id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+                    class_code='TQOB',
+                    id=instrument
+                )
+                if response and hasattr(response, 'instrument'):
+                    inst = response.instrument
+                    logger.info(f"T-Tech Macro: Found bond {instrument} via bond_by (TQOB): instrument_id={inst.uid}, figi={inst.figi}")
+                    return inst.uid or inst.figi
+            except Exception as e:
+                logger.debug(f"T-Tech Macro: bond_by (TQOB) failed for {instrument}: {e}")
+            
+            # Если не нашли по тикеру, пробуем использовать mapped FIGI напрямую через bond_by
             mapped_figi = self._macro_ticker_map.get(instrument)
             if mapped_figi and mapped_figi.startswith('SU'):
-                logger.info(f"T-Tech Macro: Using mapped FIGI {mapped_figi} for {instrument}")
+                logger.info(f"T-Tech Macro: Trying to find bond by FIGI {mapped_figi}")
+                try:
+                    response = await client.instruments.bond_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                        id=mapped_figi
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found bond by FIGI {mapped_figi}: instrument_id={inst.uid}")
+                        return inst.uid or inst.figi
+                except Exception as e:
+                    logger.debug(f"T-Tech Macro: bond_by FIGI failed for {mapped_figi}: {e}")
+                
+                # Если поиск по FIGI тоже не дал результата, возвращаем FIGI напрямую
+                logger.info(f"T-Tech Macro: Using mapped FIGI {mapped_figi} for {instrument} (not found via API)")
                 return mapped_figi
                 
         elif instrument in ['RUONIA', 'MOEX_INDEX', 'RTS_INDEX', 'CBR_KEY_RATE']:
