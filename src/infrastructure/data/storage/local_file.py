@@ -27,7 +27,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from ..models import Timeframe, Checkpoint, Metadata, ValidationReport, DataSource
+from ..models import Timeframe, Checkpoint, Metadata, ValidationReport, DataSource, L2OrderBook, L2OrderLevel
 
 logger = logging.getLogger(__name__)
 
@@ -593,3 +593,87 @@ class LocalFileStorage:
         
         logger.info(f"Created backup snapshot: {snapshot_path}")
         return snapshot_path
+    
+    async def write_orderbook(
+        self,
+        ticker: str,
+        orderbook: L2OrderBook,
+        append: bool = True
+    ) -> bool:
+        """
+        Запись стакана (L2 OrderBook).
+        
+        Args:
+            ticker: Тикер инструмента.
+            orderbook: Объект стакана L2OrderBook.
+            append: Добавить к существующим (True) или заменить (False).
+            
+        Returns:
+            True если успешно.
+        """
+        lock_key = f"lob:{ticker}"
+        async with self._get_lock(lock_key):
+            # Получаем путь для хранения снапшотов стакана
+            path = self._get_ticker_path(ticker, "snapshot", data_type="lob")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            
+            existing = []
+            if append:
+                existing_data = await self.read_json(path)
+                if existing_data and isinstance(existing_data, list):
+                    existing = existing_data
+            
+            # Конвертация orderbook в dict для JSON сериализации
+            orderbook_dict = orderbook.model_dump(mode='json')
+            
+            # Добавляем новый снапшот
+            combined = existing + [orderbook_dict]
+            
+            await self._atomic_write(path, combined)
+            
+            logger.debug(f"Written orderbook snapshot for {ticker} to {path} (total snapshots: {len(combined)})")
+            return True
+    
+    async def read_orderbook(
+        self,
+        ticker: str,
+        from_dt: Optional[datetime] = None,
+        to_dt: Optional[datetime] = None
+    ) -> List[L2OrderBook]:
+        """
+        Чтение снапшотов стакана.
+        
+        Args:
+            ticker: Тикер инструмента.
+            from_dt: Начало периода (опционально).
+            to_dt: Конец периода (опционально).
+            
+        Returns:
+            Список снапшотов L2OrderBook.
+        """
+        path = self._get_ticker_path(ticker, "snapshot", data_type="lob")
+        data = await self.read_json(path)
+        
+        if not data or not isinstance(data, list):
+            return []
+        
+        result = []
+        for snapshot in data:
+            # Фильтрация по периоду
+            if from_dt or to_dt:
+                ts_str = snapshot.get('timestamp', '')
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                    if from_dt and ts < from_dt:
+                        continue
+                    if to_dt and ts > to_dt:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            
+            try:
+                result.append(L2OrderBook(**snapshot))
+            except Exception as e:
+                logger.error(f"Failed to parse orderbook snapshot: {e}")
+        
+        return result
