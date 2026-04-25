@@ -296,8 +296,11 @@ class TtechProvider(DataProvider):
             # ISO формат
             return datetime.fromisoformat(ts.replace('Z', '+00:00')).replace(tzinfo=None)
         
-        if isinstance(ts, datetime):
+        # Проверяем datetime до других проверок, т.к. некоторые объекты могут быть его подклассами
+        from datetime import datetime as dt_type
+        if isinstance(ts, dt_type):
             # Уже datetime объект, просто убираем timezone info если есть
+            logger.debug(f"Converting datetime object: {ts}, tzinfo: {ts.tzinfo}")
             return ts.replace(tzinfo=None)
         
         # Если тип неизвестен, пробуем получить атрибуты напрямую
