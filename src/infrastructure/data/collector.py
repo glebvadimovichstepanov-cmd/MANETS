@@ -146,7 +146,8 @@ class DataCollector:
                 provider_instance = MoexAlgoProvider(
                     config={
                         'priority': cfg.priority,
-                        'endpoints': cfg.endpoints
+                        'endpoints': cfg.endpoints,
+                        'request_timeout': cfg.request_timeout_sec
                     },
                     rate_limit_config=cfg.rate_limit.model_dump() if cfg.rate_limit else None,
                     circuit_breaker_config=cfg.circuit_breaker.model_dump() if cfg.circuit_breaker else None
