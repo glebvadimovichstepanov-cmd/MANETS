@@ -537,13 +537,6 @@ def pytest_incremental_sync():
 def pytest_data_collector_pipeline():
     """Обертка для pytest."""
     test_data_collector_pipeline()
-    except Exception as e:
-        results.add_fail(name, str(e))
-    finally:
-        if os.path.exists(TEST_DATA_DIR):
-            shutil.rmtree(TEST_DATA_DIR)
-        if os.path.exists(metadata_dir := os.path.join(TEST_DATA_DIR, "..", "metadata")):
-            shutil.rmtree(metadata_dir)
 
 
 # --- Основная точка входа ---
