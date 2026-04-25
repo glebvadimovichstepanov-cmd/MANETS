@@ -645,6 +645,116 @@ class TtechProvider(DataProvider):
             logger.error(f"T-Tech get_trades failed for {instrument}: {e}")
             raise
     
+    async def _resolve_macro_instrument_id(self, client: AsyncClient, instrument: str) -> Optional[str]:
+        """
+        Поиск instrument_id (FIGI/UID) для макро-инструмента через API.
+        
+        Использует различные методы поиска в зависимости от типа инструмента:
+        - bond_by для облигаций (OFZ_*)
+        - index_by для индексов (RUONIA, MOEX_INDEX, RTS_INDEX)
+        - currency_by для валютных пар
+        - share_by для товаров (BRENT, NATURAL_GAS)
+        
+        Args:
+            client: AsyncClient экземпляр.
+            instrument: Тикер макро-инструмента.
+            
+        Returns:
+            instrument_id (UID) или FIGI, либо None если не найдено.
+        """
+        # Определяем тип инструмента по префиксу/названию
+        if instrument.startswith('OFZ_') or instrument.startswith('SU'):
+            # Облигации - используем bond_by
+            try:
+                # Пытаемся найти по ticker в классе облигаций
+                response = await client.instruments.bond_by(
+                    id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_TICKER,
+                    class_code='TQOB',  # Класс для облигаций
+                    id=instrument
+                )
+                if response and hasattr(response, 'instrument'):
+                    inst = response.instrument
+                    logger.info(f"T-Tech Macro: Found bond {instrument} via bond_by: instrument_id={inst.uid}, figi={inst.figi}")
+                    return inst.uid or inst.figi
+            except Exception as e:
+                logger.debug(f"T-Tech Macro: bond_by failed for {instrument}: {e}")
+            
+            # Если не нашли по тикеру, пробуем использовать mapped FIGI напрямую
+            mapped_figi = self._macro_ticker_map.get(instrument)
+            if mapped_figi and mapped_figi.startswith('SU'):
+                logger.info(f"T-Tech Macro: Using mapped FIGI {mapped_figi} for {instrument}")
+                return mapped_figi
+                
+        elif instrument in ['RUONIA', 'MOEX_INDEX', 'RTS_INDEX', 'CBR_KEY_RATE']:
+            # Индексы - используем index_by
+            try:
+                # Для индексов используем специальный класс_code или поиск по FIGI
+                mapped_figi = self._macro_ticker_map.get(instrument, instrument)
+                response = await client.instruments.index_by(
+                    id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                    id=mapped_figi
+                )
+                if response and hasattr(response, 'instrument'):
+                    inst = response.instrument
+                    logger.info(f"T-Tech Macro: Found index {instrument} via index_by: instrument_id={inst.uid}, figi={inst.figi}")
+                    return inst.uid or inst.figi
+            except Exception as e:
+                logger.debug(f"T-Tech Macro: index_by failed for {instrument}: {e}")
+                
+            # Fallback: используем mapped FIGI
+            mapped_figi = self._macro_ticker_map.get(instrument, instrument)
+            if mapped_figi != instrument:
+                logger.info(f"T-Tech Macro: Using mapped FIGI {mapped_figi} for index {instrument}")
+                return mapped_figi
+                
+        elif instrument in ['USD_RUB', 'EUR_RUB', 'CNY_RUB']:
+            # Валютные пары - используем currency_by
+            try:
+                mapped_figi = self._macro_ticker_map.get(instrument)
+                if mapped_figi:
+                    response = await client.instruments.currency_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                        id=mapped_figi
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found currency {instrument} via currency_by: instrument_id={inst.uid}, figi={inst.figi}")
+                        return inst.uid or inst.figi
+            except Exception as e:
+                logger.debug(f"T-Tech Macro: currency_by failed for {instrument}: {e}")
+                
+            # Fallback
+            mapped_figi = self._macro_ticker_map.get(instrument, instrument)
+            if mapped_figi != instrument:
+                return mapped_figi
+                
+        elif instrument in ['BRENT', 'NATURAL_GAS']:
+            # Товары - могут быть как futures, ищем через share_by или bond_by
+            try:
+                mapped_figi = self._macro_ticker_map.get(instrument)
+                if mapped_figi:
+                    # Пробуем как акцию/future
+                    response = await client.instruments.share_by(
+                        id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI,
+                        id=mapped_figi
+                    )
+                    if response and hasattr(response, 'instrument'):
+                        inst = response.instrument
+                        logger.info(f"T-Tech Macro: Found commodity {instrument} via share_by: instrument_id={inst.uid}, figi={inst.figi}")
+                        return inst.uid or inst.figi
+            except Exception as e:
+                logger.debug(f"T-Tech Macro: share_by failed for {instrument}: {e}")
+                
+            # Fallback
+            mapped_figi = self._macro_ticker_map.get(instrument, instrument)
+            if mapped_figi != instrument:
+                return mapped_figi
+        
+        # Последний fallback: возвращаем то, что есть в маппинге
+        mapped = self._macro_ticker_map.get(instrument, instrument)
+        logger.warning(f"T-Tech Macro: Could not resolve instrument_id for {instrument}, using mapped value: {mapped}")
+        return mapped
+    
     async def get_macro(
         self,
         instrument: str,
@@ -716,16 +826,20 @@ class TtechProvider(DataProvider):
                     logger.warning(f"Unsupported timeframe for macro: {timeframe.value}")
                     return []
                 
-                # Получение instrument_id из маппинга
-                instrument_id = self._macro_ticker_map.get(instrument, instrument)
-                logger.debug(f"T-Tech: Using instrument_id={instrument_id} for macro {instrument}")
-                
                 # Очистка токена
                 clean_token = self.token
                 if clean_token.startswith('t.'):
                     pass  # Оставляем как есть
                 
                 async with AsyncClient(token=clean_token) as client:
+                    # Динамический поиск instrument_id через API
+                    instrument_id = await self._resolve_macro_instrument_id(client, instrument)
+                    
+                    if not instrument_id:
+                        logger.error(f"T-Tech Macro: Could not resolve instrument_id for {instrument}")
+                        return []
+                    
+                    logger.info(f"T-Tech Macro: Resolved {instrument} -> instrument_id={instrument_id}")
                     # Для макро-инструментов используем разные методы в зависимости от типа
                     # Валюты, товары, индексы - через candle_by (аналогично акциям)
                     # Ставки - могут требовать специального处理
