@@ -173,16 +173,15 @@ class TtechProvider(DataProvider):
             # Валютные пары (FIGI для tom-расчетов)
             'USD_RUB': 'USD000UTSTOM',   # USD/RUB tom
             'EUR_RUB': 'EUR000UTSTOM',   # EUR/RUB tom
-            'CNY_RUB': 'CNYRUB',         # CNY/RUB (ticker в VALNET)
+            'CNY_RUB': 'CNY000UTSTOM',   # CNY/RUB tom (основной FIGI)
             
-            # Товары (фьючерсы - ближайшие контракты)
-            # Примечание: фьючерсы имеют ограниченный срок жизни, нужно обновлять
-            'BRENT': 'BRNF',             # Brent crude futures (если доступен)
-            'NATURAL_GAS': 'NGAS',       # Natural Gas futures (если доступен)
+            # Товары - ETF на Московской бирже
+            'BRENT': 'TBRF',             # Тинькофф Brent Oil ETF (USD)
+            'NATURAL_GAS': 'UGAZ',       # Тинькофф Natural Gas ETF (USD)
             
-            # Индексы (FIGI) - могут быть недоступны для GetCandles
-            'MOEX_INDEX': 'IMOEX',       # MOEX Russia Index
-            'RTS_INDEX': 'IRTS',         # RTS Index
+            # Индексы (тикер на Мосбирже)
+            'MOEX_INDEX': 'IMOEX',       # MOEX Russia Index (тикер)
+            'RTS_INDEX': 'RTSI',         # RTS Index (тикер)
             
             # Ставки и облигации
             'CBR_KEY_RATE': 'CBR_KEY_RATE',  # Ключевая ставка (специальный, берется из CBR)
@@ -199,18 +198,18 @@ class TtechProvider(DataProvider):
         # Альтернативные FIGI/UID для инструментов, если основные не работают
         self._fallback_figi_map = {
             # Валюты - альтернативные инструменты (бессрочные контракты, UID)
-            'CNY_RUB': ['CNYRUB', '59ace78f-e1ae-4d65-ac3a-b7c85b6a48e2'],  # CNYRUB ticker и UID
+            'CNY_RUB': ['CNY000UTSTOM', '59ace78f-e1ae-4d65-ac3a-b7c85b6a48e2'],  # CNY/RUB FIGI и UID
             
-            # Товары - ETF на нефть и газ вместо фьючерсов
-            'BRENT': ['SBGB', 'OIL'],  # ETF на нефть
-            'NATURAL_GAS': ['NGAS', 'GASE'],  # ETF на газ
+            # Товары - альтернативные ETF
+            'BRENT': ['TBRF', 'SBGB', 'OIL'],  # TBRF основной, затем другие ETF
+            'NATURAL_GAS': ['UGAZ', 'NGAS', 'GASE'],  # UGAZ основной, затем другие
             
-            # Индексы - полные названия
-            'MOEX_INDEX': ['IMOEX', 'MXRA'],
-            'RTS_INDEX': ['IRTS', 'RTSI'],
+            # Индексы - разные варианты написания
+            'MOEX_INDEX': ['IMOEX', 'MXRA', 'MOEX'],
+            'RTS_INDEX': ['RTSI', 'IRTS', 'RTS'],
             
             # Ставки
-            'RUONIA': ['RUSFAR', 'RUONIA'],
+            'RUONIA': ['RUSFAR', 'RUONIA', 'RUONIA_IND'],
         }
     
     def _quotation_to_decimal(self, quotation: Any) -> Decimal:
