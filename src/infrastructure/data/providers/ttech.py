@@ -619,7 +619,7 @@ class TtechProvider(DataProvider):
         
         try:
             return await self._execute_with_protection(
-                self._retry_with_backoff(_fetch(), f"get_orderbook:{instrument}")
+                await self._retry_with_backoff(_fetch(), f"get_orderbook:{instrument}")
             )
         except Exception as e:
             logger.error(f"T-Tech get_orderbook failed for {instrument}: {e}")
