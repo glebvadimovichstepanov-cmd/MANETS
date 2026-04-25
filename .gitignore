@@ -1,37 +1,36 @@
 ```
-# Python compiled files
-*.pyc
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Data storage and metadata (generated files)
-data/storage/
-data/metadata/
+# Dependencies
+.venv/
+venv/
+env/
 
-# Environment files
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
 .env
 .env.local
 *.env.*
 
-# Logs
-*.log
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Coverage reports
+# Coverage
+.coverage
 coverage/
 htmlcov/
-.coverage
 
-# Cache directories
+# MyPy
 .mypy_cache/
+
+# PyTest
 .pytest_cache/
+
+# Build directories
+build/
+dist/
 ```

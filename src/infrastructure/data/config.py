@@ -17,6 +17,26 @@ from pydantic import BaseModel, Field, ValidationError
 from .models import ProviderConfig, Timeframe, RateLimitConfig, CircuitBreakerConfig
 
 
+class HistoryDepthConfig(BaseModel):
+    """Конфигурация глубины сбора исторических данных."""
+    intraday_years: int = Field(default=3, ge=1, description="Глубина для внутридневных TF (< 1d)")
+    daily_and_above_years: int = Field(default=10, ge=1, description="Глубина для дневных и выше (>= 1d)")
+    by_timeframe: Dict[str, int] = Field(
+        default_factory=lambda: {
+            "1m": 3, "5m": 3, "10m": 3, "15m": 3,
+            "1h": 3, "4h": 3,
+            "1d": 10, "1w": 10, "1M": 10
+        },
+        description="Переопределение глубины по таймфреймам"
+    )
+    
+    def get_depth_for_timeframe(self, timeframe: str) -> int:
+        """Получение глубины в годах для конкретного таймфрейма."""
+        return self.by_timeframe.get(timeframe, 
+            self.intraday_years if timeframe in ["1m", "5m", "10m", "15m", "1h", "4h"] 
+            else self.daily_and_above_years)
+
+
 class GeneralConfig(BaseModel):
     """Общие настройки."""
     log_level: str = Field(default="INFO")
@@ -146,6 +166,7 @@ class DataCollectorConfig(BaseModel):
         general: Общие настройки.
         providers: Конфигурация провайдеров.
         timeframes: Поддерживаемые таймфреймы.
+        history_depth: Глубина сбора исторических данных.
         instruments: Конфигурация инструментов.
         cache: Настройки кэширования.
         storage: Настройки хранилища.
@@ -157,6 +178,7 @@ class DataCollectorConfig(BaseModel):
     general: GeneralConfig = Field(default_factory=GeneralConfig)
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     timeframes: List[Timeframe] = Field(default_factory=list)
+    history_depth: HistoryDepthConfig = Field(default_factory=HistoryDepthConfig)
     instruments: InstrumentsConfig = Field(default_factory=InstrumentsConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
