@@ -1,0 +1,14 @@
+{
+  "instrument": "SBER",
+  "timeframe": "1h",
+  "data_type": "ohlcv",
+  "last_timestamp": "2026-04-25T05:00:00Z",
+  "last_sync_at": "2026-04-25T06:20:09.257014",
+  "source_chain": [
+    "stub"
+  ],
+  "checksum": null,
+  "schema_version": "2.0",
+  "quality_score": 1.0,
+  "gaps_detected": 0
+}
