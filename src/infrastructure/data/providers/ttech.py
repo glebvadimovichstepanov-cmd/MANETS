@@ -561,12 +561,12 @@ class TtechProvider(DataProvider):
                         for candle in candles_response.candles:
                             # Отладка: проверяем исходный timestamp
                             ts_raw = candle.time
-                            logger.debug(f\"Raw candle time: {ts_raw}, type: {type(ts_raw)}\")
+                            logger.debug(f"Raw candle time: {ts_raw}, type: {type(ts_raw)}")
                             if hasattr(ts_raw, 'seconds'):
-                                logger.debug(f\"  seconds={ts_raw.seconds}, nanos={getattr(ts_raw, 'nano', None)}\")
+                                logger.debug(f"  seconds={ts_raw.seconds}, nanos={getattr(ts_raw, 'nano', None)}")
                             
                             dt = self._timestamp_to_datetime(candle.time)
-                            logger.debug(f\"Converted datetime: {dt}\")
+                            logger.debug(f"Converted datetime: {dt}")
                             
                             all_candles.append(Candle(
                                 timestamp=dt,
