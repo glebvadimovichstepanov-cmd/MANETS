@@ -24,7 +24,6 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
 from typing import List, Optional
 
 # Добавляем корень проекта в путь
@@ -149,65 +148,73 @@ async def main():
         
         # Создание коллектора данных
         logger.info("Инициализация DataCollector...")
-        collector = DataCollector(config=config)
-        
-        if args.dry_run:
-            logger.info("РЕЖИМ ПРОВЕРКИ (dry-run) - данные не будут сохраняться")
-            # Проверка доступности провайдеров
+        collector: Optional[DataCollector] = None
+        try:
+            collector = DataCollector(config=config)
+            
+            if args.dry_run:
+                logger.info("РЕЖИМ ПРОВЕРКИ (dry-run) - данные не будут сохраняться")
+                # Проверка доступности провайдеров
+                await collector.start()
+                logger.info("Проверка провайдеров завершена успешно")
+                await collector.stop()
+                logger.info("Проверка завершена. Выход.")
+                return
+            
+            # Запуск сбора данных
+            logger.info("Запуск сбора данных...")
+            logger.info("-" * 60)
+            
             await collector.start()
-            logger.info("Проверка провайдеров завершена успешно")
-            await collector.stop()
-            logger.info("Проверка завершена. Выход.")
-            return
-        
-        # Запуск сбора данных
-        logger.info("Запуск сбора данных...")
-        logger.info("-" * 60)
-        
-        await collector.start()
-        
-        total_candles = 0
-        for ticker in tickers:
-            for timeframe in timeframes:
-                try:
-                    logger.info(f"Сбор данных: {ticker} [{timeframe.value}]")
-                    
-                    candles = await collector.collect(
-                        instrument=ticker,
-                        timeframe=timeframe
-                    )
-                    
-                    if candles:
-                        count = len(candles)
-                        total_candles += count
-                        logger.info(f"  ✓ Получено {count} свечей")
+            
+            total_candles = 0
+            for ticker in tickers:
+                for timeframe in timeframes:
+                    try:
+                        logger.info(f"Сбор данных: {ticker} [{timeframe.value}]")
                         
-                        # Сохранение данных через storage
-                        candles_dict = [c.model_dump(mode='json') for c in candles]
-                        await collector._storage.write_ohlcv(
-                            ticker=ticker,
-                            timeframe=timeframe.value,
-                            candles=candles_dict
+                        candles = await collector.collect(
+                            instrument=ticker,
+                            timeframe=timeframe
                         )
-                        logger.info(f"  ✓ Данные сохранены")
-                    else:
-                        logger.warning(f"  ⚠ Нет данных для {ticker} [{timeframe.value}]")
                         
-                except Exception as e:
-                    logger.error(f"  ✗ Ошибка при сборе {ticker} [{timeframe.value}]: {e}", exc_info=args.verbose)
-        
-        await collector.stop()
-        
-        logger.info("-" * 60)
-        logger.info(f"Сбор данных завершен. Всего получено свечей: {total_candles}")
-        logger.info(f"Данные сохранены в: {config.storage.base_path}")
-        
-    except KeyboardInterrupt:
-        logger.info("\nСбор данных прерван пользователем")
-        if 'collector' in locals():
+                        if candles:
+                            count = len(candles)
+                            total_candles += count
+                            logger.info(f"  ✓ Получено {count} свечей")
+                            
+                            # Сохранение данных через storage
+                            candles_dict = [c.model_dump(mode='json') for c in candles]
+                            await collector.storage.write_ohlcv(
+                                ticker=ticker,
+                                timeframe=timeframe.value,
+                                candles=candles_dict
+                            )
+                            logger.info(f"  ✓ Данные сохранены")
+                        else:
+                            logger.warning(f"  ⚠ Нет данных для {ticker} [{timeframe.value}]")
+                            
+                    except Exception as e:
+                        logger.error(f"  ✗ Ошибка при сборе {ticker} [{timeframe.value}]: {e}", exc_info=args.verbose)
+            
             await collector.stop()
+            
+            logger.info("-" * 60)
+            logger.info(f"Сбор данных завершен. Всего получено свечей: {total_candles}")
+            logger.info(f"Данные сохранены в: {config.storage.base_path}")
+            
+        except KeyboardInterrupt:
+            logger.info("\nСбор данных прерван пользователем")
+            if collector:
+                await collector.stop()
+        except Exception as e:
+            logger.error(f"Критическая ошибка: {e}", exc_info=True)
+            if collector:
+                await collector.stop()
+            sys.exit(1)
+            
     except Exception as e:
-        logger.error(f"Критическая ошибка: {e}", exc_info=True)
+        logger.error(f"Ошибка на верхнем уровне: {e}", exc_info=True)
         sys.exit(1)
 
 
