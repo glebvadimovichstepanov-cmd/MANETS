@@ -1,0 +1,24 @@
+[
+  {
+    "timestamp": "2025-01-01T00:00:00",
+    "open": "90.0",
+    "high": "91.0",
+    "low": "89.5",
+    "close": "90.5",
+    "volume": null,
+    "source": "ttech",
+    "interpolation_method": "ffill",
+    "shift_periods": 1
+  },
+  {
+    "timestamp": "2025-01-02T00:00:00",
+    "open": "90.5",
+    "high": "92.0",
+    "low": "90.0",
+    "close": "91.5",
+    "volume": null,
+    "source": "ttech",
+    "interpolation_method": "ffill",
+    "shift_periods": 1
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "timestamp": "2026-04-01T00:00:00",
+    "open": "11.777",
+    "high": "11.808",
+    "low": "10.8915",
+    "close": "10.98",
+    "volume": "209799929000",
+    "source": "moexalgo",
+    "interpolation_method": "ffill",
+    "shift_periods": 1
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "snapshot_id": "CNY_RUB_10m_20260425_145651",
+  "instrument": "CNY_RUB",
+  "timeframe": "10m",
+  "data_type": "macro",
+  "created_at": "2026-04-25T14:56:51.878277",
+  "updated_at": "2026-04-25T14:56:51.878265",
+  "checkpoint": null,
+  "validation_report": {
+    "passed": true,
+    "quality_score": 1.0,
+    "errors": [],
+    "warnings": [],
+    "checks_performed": [
+      "schema_enforcement",
+      "ohlc_consistency",
+      "timestamp_monotonicity",
+      "gap_detection",
+      "volume_check",
+      "price_jump_check",
+      "adjusted_prices"
+    ],
+    "gaps": 0
+  },
+  "source_chain": [
+    "ttech"
+  ],
+  "total_records": 1385
+}

@@ -1,0 +1,14 @@
+{
+  "instrument": "SNGS",
+  "timeframe": "4h",
+  "data_type": "ohlcv",
+  "last_timestamp": "2026-04-25T12:00:00",
+  "last_sync_at": "2026-04-25T18:27:23.456713",
+  "source_chain": [
+    "ttech"
+  ],
+  "checksum": null,
+  "schema_version": "2.0",
+  "quality_score": 1.0,
+  "gaps_detected": 0
+}

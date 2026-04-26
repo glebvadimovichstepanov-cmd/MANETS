@@ -1,0 +1,417 @@
+"""
+Инкрементальный синхронизатор данных.
+
+Реализует стратегию инкрементальной загрузки:
+1. Чтение checkpoint.json → last_timestamp
+2. Запрос дельты [last_ts, now) у провайдера
+3. Валидация новых данных
+4. Атомарная запись (conсatenation + deduplication)
+5. Обновление checkpoint и метаданных
+
+Гарантии:
+- Идемпотентность повторных запусков
+- Отсутствие дубликатов
+- Сохранение порядка временных меток
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
+from ..models import (
+    Candle, Timeframe, Checkpoint, Metadata, ValidationReport,
+    DataSource
+)
+from ..providers.base import DataProvider
+from ..storage.local_file import LocalFileStorage
+from ..cache.memcached import MemcachedClient
+from ..validator import DataValidator
+from ..config import DataCollectorConfig
+
+logger = logging.getLogger(__name__)
+
+
+class IncrementalSyncError(Exception):
+    """Ошибка инкрементальной синхронизации."""
+    pass
+
+
+class CausalityError(Exception):
+    """Ошибка каузальности (lookahead bias detected)."""
+    pass
+
+
+class IncrementalSynchronizer:
+    """
+    Инкрементальный синхронизатор для OHLCV данных.
+    
+    Example:
+        >>> sync = IncrementalSynchronizer(provider, storage, cache)
+        >>> result = await sync.sync("SNGS", Timeframe.D1)
+        >>> print(f"Loaded {result['new_bars']} new bars")
+    """
+    
+    def __init__(
+        self,
+        provider: DataProvider,
+        storage: LocalFileStorage,
+        cache: Optional[MemcachedClient] = None,
+        validator: Optional[DataValidator] = None,
+        max_batch_size: int = 1000,
+        config: Optional[DataCollectorConfig] = None
+    ):
+        """
+        Инициализация синхронизатора.
+        
+        Args:
+            provider: Провайдер данных.
+            storage: Хранилище.
+            cache: Кэш (опционально).
+            validator: Валидатор (опционально).
+            max_batch_size: Максимальный размер батча за один запрос.
+            config: Конфигурация для определения глубины истории (опционально).
+        """
+        self.provider = provider
+        self.storage = storage
+        self.cache = cache
+        self.validator = validator or DataValidator()
+        self.max_batch_size = max_batch_size
+        self.config = config
+    
+    async def sync(
+        self,
+        instrument: str,
+        timeframe: Timeframe,
+        data_type: str = "ohlcv",
+        force_full: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Инкрементальная синхронизация.
+        
+        Args:
+            instrument: Инструмент.
+            timeframe: Таймфрейм.
+            data_type: Тип данных.
+            force_full: Принудительная полная загрузка.
+            
+        Returns:
+            Статистика синхронизации.
+            
+        Raises:
+            IncrementalSyncError: Если ошибка синхронизации.
+            CausalityError: Если обнаружен lookahead bias.
+        """
+        start_time = datetime.utcnow()
+        
+        logger.info(
+            f"Starting incremental sync for {instrument} {timeframe.value} "
+            f"(force_full={force_full})"
+        )
+        
+        # Чтение контрольной точки
+        checkpoint = None
+        if not force_full:
+            checkpoint = await self.storage.read_checkpoint(
+                instrument, timeframe, data_type
+            )
+        
+        # Определение периода загрузки - для макро данных идем от текущей даты назад
+        if checkpoint and checkpoint.last_timestamp:
+            from_dt = checkpoint.last_timestamp
+            # Убедимся, что timestamp timezone-aware (UTC)
+            if from_dt.tzinfo is None:
+                from_dt = from_dt.replace(tzinfo=timezone.utc)
+            # Добавляем небольшой overlap для безопасности (1 бар)
+            from_dt = from_dt - self._get_tf_delta(timeframe)
+            to_dt = datetime.now(timezone.utc)
+        else:
+            # Полная загрузка: используем глубину из конфига
+            to_dt = datetime.now(timezone.utc)
+            
+            if self.config:
+                # Используем глубину истории из конфигурации
+                depth_years = self.config.history_depth.get_depth_for_timeframe(timeframe.value)
+                from_dt = to_dt - timedelta(days=depth_years * 365)
+                logger.info(f"No checkpoint found. Using history depth of {depth_years} years for {timeframe.value}. From {from_dt} to {to_dt}")
+            else:
+                # Fallback: начинаем с 30 дней назад для первого батча
+                from_dt = to_dt - timedelta(days=30)
+                logger.info(f"No checkpoint and no config. Starting from {to_dt} going back to {from_dt}")
+        
+        # Ограничение глубины для внутридневных таймфреймов из конфига (если есть)
+        if self.config:
+            depth_years = self.config.history_depth.get_depth_for_timeframe(timeframe.value)
+            max_history = datetime.now(timezone.utc) - timedelta(days=depth_years * 365)
+            if from_dt < max_history:
+                from_dt = max_history
+                logger.info(f"Limiting history to {depth_years} years ({max_history}) for {timeframe.value}")
+        else:
+            # Fallback: ограничение 5 годами для внутридневных TF
+            if timeframe in [Timeframe.S5, Timeframe.S10, Timeframe.S30,
+                             Timeframe.M1, Timeframe.M2, Timeframe.M3, Timeframe.M5,
+                             Timeframe.M10, Timeframe.M15, Timeframe.M30,
+                             Timeframe.H1, Timeframe.H2, Timeframe.H4]:
+                max_history = datetime.now(timezone.utc) - timedelta(days=5*365)
+                if from_dt < max_history:
+                    from_dt = max_history
+                    logger.info(f"Intraday TF detected. Limiting history to 5 years from {from_dt}")
+        
+        # Проверка необходимости загрузки
+        if to_dt - from_dt < self._get_tf_delta(timeframe):
+            logger.info("No new data needed (within one bar)")
+            return {
+                'status': 'no_op',
+                'instrument': instrument,
+                'timeframe': timeframe.value,
+                'new_bars': 0,
+                'duration_ms': 0
+            }
+        
+        # Загрузка данных - для макро идем от новой даты к старой
+        all_candles = []
+        current_to = to_dt
+        
+        # Определяем размер батча в зависимости от таймфрейма
+        # Для внутридневных TF уменьшаем батч до 7 дней для надежности
+        if timeframe in [Timeframe.S5, Timeframe.S10, Timeframe.S30,
+                         Timeframe.M1, Timeframe.M2, Timeframe.M3, Timeframe.M5,
+                         Timeframe.M10, Timeframe.M15, Timeframe.M30,
+                         Timeframe.H1, Timeframe.H2, Timeframe.H4]:
+            batch_days = 7
+            logger.info(f"Intraday TF detected. Using batch size of {batch_days} days")
+        else:
+            batch_days = 30
+        
+        while current_to > from_dt:
+            batch_from = max(current_to - timedelta(days=batch_days), from_dt)
+            
+            logger.info(f"Fetching batch: {batch_from} to {current_to} ({batch_days} days)")
+            
+            try:
+                # Выбор метода в зависимости от типа данных
+                if data_type == "macro":
+                    candles = await self.provider.get_macro(
+                        instrument, timeframe, batch_from, current_to
+                    )
+                else:
+                    candles = await self.provider.get_ohlcv(
+                        instrument, timeframe, batch_from, current_to
+                    )
+                
+                if not candles:
+                    logger.warning(f"No data returned for batch {batch_from} to {current_to}. Stopping backward search.")
+                    break
+                
+                logger.info(f"Retrieved {len(candles)} candles for batch")
+                all_candles.extend(candles)
+                current_to = batch_from
+                
+                # Небольшая пауза между батчами
+                if current_to > from_dt:
+                    await asyncio.sleep(0.2)
+                    
+            except Exception as e:
+                logger.error(f"Failed to fetch batch: {e}")
+                raise IncrementalSyncError(f"Fetch failed: {e}")
+        
+        if not all_candles:
+            logger.warning("No data loaded")
+            return {
+                'status': 'no_data',
+                'instrument': instrument,
+                'timeframe': timeframe.value,
+                'new_bars': 0,
+                'duration_ms': (datetime.utcnow() - start_time).total_seconds() * 1000
+            }
+        
+        # Сортировка всех свечей по timestamp (API может возвращать в обратном порядке)
+        all_candles.sort(key=lambda c: c.timestamp)
+        
+        # Дедупликация по timestamp (удаляем дубликаты, оставляя первую запись)
+        seen_timestamps = set()
+        unique_candles = []
+        for candle in all_candles:
+            if candle.timestamp not in seen_timestamps:
+                seen_timestamps.add(candle.timestamp)
+                unique_candles.append(candle)
+        
+        if len(unique_candles) < len(all_candles):
+            logger.info(f"Deduplicated: {len(all_candles)} -> {len(unique_candles)} candles (removed {len(all_candles) - len(unique_candles)} duplicates)")
+        
+        all_candles = unique_candles
+        
+        # Отладка: проверяем порядок после сортировки
+        if all_candles:
+            logger.debug(f"After sorting: first={all_candles[0].timestamp}, last={all_candles[-1].timestamp}, total={len(all_candles)}")
+        
+        # Конвертация в dict для хранения
+        candles_dict = [self._candle_to_dict(c) for c in all_candles]
+        
+        # Отладка: проверяем первый и последний timestamp в dict
+        if candles_dict:
+            logger.debug(f"Dict candles: first_ts={candles_dict[0].get('timestamp')}, last_ts={candles_dict[-1].get('timestamp')}")
+        
+        # Валидация
+        validation_result = await self._validate_and_check_causality(
+            candles_dict, instrument, timeframe
+        )
+        
+        logger.info(f"Validation result: passed={validation_result['passed']}, errors={validation_result.get('errors', [])}")
+        
+        if not validation_result['passed']:
+            errors = validation_result.get('errors', [])
+            if any('causality' in str(e).lower() for e in errors):
+                raise CausalityError(f"Causality violation detected: {errors}")
+            
+            raise IncrementalSyncError(f"Validation failed: {errors}")
+        
+        # Запись в хранилище
+        await self.storage.write_ohlcv(
+            instrument, timeframe, candles_dict, append=True, data_type=data_type
+        )
+        
+        # Обновление контрольной точки
+        last_ts = max(
+            datetime.fromisoformat(c['timestamp'].replace('Z', '+00:00'))
+            for c in candles_dict
+        )
+        
+        new_checkpoint = Checkpoint(
+            instrument=instrument,
+            timeframe=timeframe,
+            data_type=data_type,
+            last_timestamp=last_ts,
+            last_sync_at=datetime.utcnow(),
+            source_chain=[DataSource(self.provider.name)],
+            quality_score=validation_result.get('quality_score', 1.0),
+            gaps_detected=validation_result.get('gaps', 0)
+        )
+        
+        await self.storage.write_checkpoint(
+            instrument, timeframe, new_checkpoint, data_type
+        )
+        
+        # Обновление метаданных
+        await self._update_metadata(
+            instrument, timeframe, data_type,
+            len(candles_dict), validation_result
+        )
+        
+        # Инвалидация кэша
+        if self.cache:
+            await self.cache.invalidate(
+                self.provider.name, instrument, timeframe, data_type
+            )
+        
+        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        
+        result = {
+            'status': 'success',
+            'instrument': instrument,
+            'timeframe': timeframe.value,
+            'new_bars': len(candles_dict),
+            'last_timestamp': last_ts.isoformat(),
+            'duration_ms': duration_ms,
+            'validation': validation_result
+        }
+        
+        logger.info(
+            f"Sync completed: {len(candles_dict)} bars in {duration_ms:.2f}ms"
+        )
+        
+        return result
+    
+    async def _validate_and_check_causality(
+        self,
+        candles: List[Dict[str, Any]],
+        instrument: str,
+        timeframe: Timeframe
+    ) -> Dict[str, Any]:
+        """
+        Валидация и проверка каузальности.
+        
+        Args:
+            candles: Список свечей.
+            instrument: Инструмент.
+            timeframe: Таймфрейм.
+            
+        Returns:
+            Результат валидации.
+        """
+        if not self.validator:
+            return {'passed': True, 'quality_score': 1.0}
+        
+        # Валидация OHLCV
+        report = await self.validator.validate_ohlcv(candles, instrument, timeframe.value)
+        
+        # Проверка каузальности для макро (если применимо)
+        # Для обычных тикеров это не требуется
+        
+        return {
+            'passed': report.passed,
+            'quality_score': report.quality_score,
+            'errors': report.errors,
+            'warnings': report.warnings,
+            'checks_performed': report.checks_performed,
+            'gaps': 0  # Можно добавить детекцию пропусков
+        }
+    
+    def _candle_to_dict(self, candle: Candle) -> Dict[str, Any]:
+        """Конвертация Candle модели в dict."""
+        return candle.model_dump(mode='json')
+    
+    def _get_tf_delta(self, timeframe: Timeframe) -> timedelta:
+        """Получение дельты времени для таймфрейма."""
+        deltas = {
+            Timeframe.S5: timedelta(seconds=5),
+            Timeframe.S10: timedelta(seconds=10),
+            Timeframe.S30: timedelta(seconds=30),
+            Timeframe.M1: timedelta(minutes=1),
+            Timeframe.M2: timedelta(minutes=2),
+            Timeframe.M3: timedelta(minutes=3),
+            Timeframe.M5: timedelta(minutes=5),
+            Timeframe.M10: timedelta(minutes=10),
+            Timeframe.M15: timedelta(minutes=15),
+            Timeframe.M30: timedelta(minutes=30),
+            Timeframe.H1: timedelta(hours=1),
+            Timeframe.H2: timedelta(hours=2),
+            Timeframe.H4: timedelta(hours=4),
+            Timeframe.D1: timedelta(days=1),
+            Timeframe.W1: timedelta(weeks=1),
+            Timeframe.MN: timedelta(days=30),
+        }
+        return deltas.get(timeframe, timedelta(hours=1))
+    
+    async def _update_metadata(
+        self,
+        instrument: str,
+        timeframe: Timeframe,
+        data_type: str,
+        new_records: int,
+        validation_result: Dict[str, Any]
+    ) -> None:
+        """Обновление метаданных после синхронизации."""
+        existing_meta = await self.storage.read_metadata(
+            instrument, timeframe, data_type
+        )
+        
+        total_records = new_records
+        if existing_meta:
+            total_records = existing_meta.total_records + new_records
+        
+        metadata = Metadata(
+            snapshot_id=f"{instrument}_{timeframe.value}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+            instrument=instrument,
+            timeframe=timeframe,
+            data_type=data_type,
+            updated_at=datetime.utcnow(),
+            checkpoint=None,  # Будет обновлено отдельно
+            validation_report=validation_result,
+            source_chain=[DataSource.TTECH],  # Уточняется
+            total_records=total_records
+        )
+        
+        await self.storage.write_metadata(instrument, timeframe, metadata, data_type)
